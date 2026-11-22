@@ -1,21 +1,88 @@
-import { Button } from "@/components/ui/button"
+import { lazy, Suspense } from "react"
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router-dom"
 
-export function App() {
+import { AppLayout } from "@/components/app/app-layout"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toast"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import LoginPage from "@/features/auth/pages/LoginPage"
+import { apiErrorMessage } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
+import { AuthProvider } from "@/lib/auth-provider"
+import { toast } from "@/lib/toast"
+
+// Pages load on demand (one small file per screen)
+const DashboardPage = lazy(() => import("@/features/dashboard/DashboardPage"))
+const MyTasksPage = lazy(() => import("@/features/tasks/pages/MyTasksPage"))
+const TaskPage = lazy(() => import("@/features/tasks/pages/TaskPage"))
+const BinPage = lazy(() => import("@/features/tasks/pages/BinPage"))
+const ProjectsPage = lazy(() => import("@/features/projects/pages/ProjectsPage"))
+const ProjectPage = lazy(() => import("@/features/projects/pages/ProjectPage"))
+const ProjectSettingsPage = lazy(() => import("@/features/projects/pages/ProjectSettingsPage"))
+const NotificationsPage = lazy(() => import("@/features/notifications/NotificationsPage"))
+const UsersPage = lazy(() => import("@/features/admin/pages/UsersPage"))
+const RolesPage = lazy(() => import("@/features/admin/pages/RolesPage"))
+const WorkflowTemplatesPage = lazy(() => import("@/features/admin/pages/WorkflowTemplatesPage"))
+const AuditLogPage = lazy(() => import("@/features/admin/pages/AuditLogPage"))
+
+// Every successful change marks all cached data stale; failed changes without their own
+// handler show the server's message (e.g. "Only the reviewer can …").
+const queryClient: QueryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30_000, refetchOnWindowFocus: true },
+  },
+  mutationCache: new MutationCache({
+    onSuccess: (): Promise<void> => queryClient.invalidateQueries(),
+    onError: (error: unknown, _vars, _ctx, mutation) => {
+      if (mutation.options.onError) return
+      toast.error(apiErrorMessage(error))
+      // A refused move may mean the task changed meanwhile: reload what is shown
+      void queryClient.invalidateQueries()
+    },
+  }),
+})
+
+function AppRoutes() {
+  const { isAuthenticated } = useAuth()
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <Routes>
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/my-tasks" element={<MyTasksPage />} />
+          <Route path="/tasks/:id" element={<TaskPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:id" element={<ProjectPage />} />
+          <Route path="/projects/:id/settings" element={<ProjectSettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/bin" element={<BinPage />} />
+          <Route path="/users" element={<UsersPage />} />
+          <Route path="/roles" element={<RolesPage />} />
+          <Route path="/workflow-templates" element={<WorkflowTemplatesPage />} />
+          <Route path="/audit-log" element={<AuditLogPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
 
-export default App
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ThemeProvider>
+          <TooltipProvider>
+            <Toaster>
+              <Router>
+                <AppRoutes />
+              </Router>
+            </Toaster>
+          </TooltipProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  )
+}

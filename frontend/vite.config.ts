@@ -3,12 +3,17 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
-// https://vite.dev/config/
+// Dev: /api goes to `php artisan serve` (same origin as in production, where nginx passes /api on)
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "./src"),
+    },
+  },
+  server: {
+    proxy: {
+      "/api": { target: process.env.API_PROXY ?? "http://127.0.0.1:8000", changeOrigin: true },
     },
   },
 })
