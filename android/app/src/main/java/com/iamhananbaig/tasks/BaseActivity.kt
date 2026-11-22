@@ -302,11 +302,29 @@ abstract class BaseActivity : ScreenActivity() {
 
 // ── Colour helpers (status / tag / project swatches) ──
 
-private val SWATCHES = setOf("gray", "blue", "sky", "green", "amber", "orange", "red", "purple", "pink")
+/**
+ * Swatch colours by name: background, text, dot. Direct R.color references (not a lookup by
+ * name), so release builds' resource shrinking keeps them.
+ */
+private val SWATCHES: Map<String, Triple<Int, Int, Int>> = mapOf(
+    "gray" to Triple(R.color.sw_gray_bg, R.color.sw_gray_fg, R.color.sw_gray_dot),
+    "blue" to Triple(R.color.sw_blue_bg, R.color.sw_blue_fg, R.color.sw_blue_dot),
+    "sky" to Triple(R.color.sw_sky_bg, R.color.sw_sky_fg, R.color.sw_sky_dot),
+    "green" to Triple(R.color.sw_green_bg, R.color.sw_green_fg, R.color.sw_green_dot),
+    "amber" to Triple(R.color.sw_amber_bg, R.color.sw_amber_fg, R.color.sw_amber_dot),
+    "orange" to Triple(R.color.sw_orange_bg, R.color.sw_orange_fg, R.color.sw_orange_dot),
+    "red" to Triple(R.color.sw_red_bg, R.color.sw_red_fg, R.color.sw_red_dot),
+    "purple" to Triple(R.color.sw_purple_bg, R.color.sw_purple_fg, R.color.sw_purple_dot),
+    "pink" to Triple(R.color.sw_pink_bg, R.color.sw_pink_fg, R.color.sw_pink_dot),
+)
 
 fun android.content.Context.swatch(name: String?, part: String): Int {
-    val key = if (name in SWATCHES) name else "gray"
-    return getColor(resources.getIdentifier("sw_${key}_$part", "color", packageName))
+    val colors = SWATCHES[name] ?: SWATCHES.getValue("gray")
+    return getColor(when (part) {
+        "bg" -> colors.first
+        "fg" -> colors.second
+        else -> colors.third
+    })
 }
 
 /** Status / tag name on its colour (text is always shown, never colour alone). */
