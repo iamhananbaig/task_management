@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query"
 import {
   closestCorners,
   DndContext,
+  pointerWithin,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
@@ -10,6 +11,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
@@ -31,6 +33,19 @@ import type { AvailableTransition, Status, Task } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type Columns = Record<number, Task[]>
+
+/**
+ * Where a card is dropped: what is under the mouse / finger — a card (to place it before) or else
+ * the column. Falls back to the nearest target only when the pointer is outside every column.
+ */
+const dropTarget: CollisionDetection = (args) => {
+  const hits = pointerWithin(args)
+  if (hits.length > 0) {
+    const card = hits.find((hit) => !String(hit.id).startsWith("status-"))
+    return [card ?? hits[0]]
+  }
+  return closestCorners(args)
+}
 
 function group(statuses: Status[], tasks: Task[]): Columns {
   const columns: Columns = Object.fromEntries(statuses.map((status) => [status.id, [] as Task[]]))
@@ -115,7 +130,7 @@ export function Board({ statuses, tasks, onAdd }: { statuses: Status[]; tasks: T
 
   return (
     <>
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActive(null)}>
+      <DndContext sensors={sensors} collisionDetection={dropTarget} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActive(null)}>
         <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 md:-mx-6 md:px-6">
           {statuses.map((status, index) => (
             <Column

@@ -21,7 +21,6 @@ beforeEach(function () {
         'reviewer_id' => $this->reviewer->id,
         'creator_id' => $this->lead->id,
     ]);
-    // Submit for review needs evidence (see "refuses to submit without an attachment")
     $this->task->attachments()->create(['user_id' => $this->assignee->id, 'original_name' => 'rec.xlsx', 'path' => 'attachments/x/rec.xlsx', 'size' => 10]);
     $this->move = fn (string $label, array $body = []) => $this->postJson(
         "/api/v1/tasks/{$this->task->id}/transitions/".$this->transition($this->project, $label),
@@ -50,8 +49,9 @@ it('runs the review cycle: submit, send back with a reason, submit, approve', fu
         ->and(AuditLog::where('task_id', $this->task->id)->where('action', 'moved')->count())->toBe(4);
 });
 
-it('refuses to submit without an attachment', function () {
+it('refuses a move that requires an attachment until one is added', function () {
     $this->task->attachments()->delete();
+    $this->project->transitions()->where('label', 'Submit for review')->update(['requires_attachment' => true]);
     $this->signIn($this->assignee);
 
     ($this->move)('Submit for review')
@@ -67,6 +67,13 @@ it('records every status change for the reports', function () {
     ($this->move)('Approve');
 
     expect(TaskStatusChange::where('task_id', $this->task->id)->pluck('to_type')->all())->toBe(['review', 'done']);
+});
+
+it('does not require attachments by default', function () {
+    $this->task->attachments()->delete();
+    $this->signIn($this->assignee);
+
+    ($this->move)('Submit for review')->assertOk();
 });
 
 it('lets the assignee pull a task back from review', function () {

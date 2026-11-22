@@ -1,0 +1,63 @@
+# Builds the iOS and Android apps on EAS and submits them to the stores when a mobile-vX.Y.Z tag
+# is pushed:
+#
+#   git tag -a mobile-v1.2.0 -m "What changed"
+#   git push origin mobile-v1.2.0
+#
+# Needs the repository secret EXPO_TOKEN (expo.dev → Account settings → Access tokens).
+# Store credentials (App Store Connect API key, Google Play service account) are kept by EAS —
+# set them once with `npx eas-cli credentials`. See mobile/README.md.
+name: Mobile release
+
+on:
+  push:
+    tags: ['mobile-v*']
+
+concurrency:
+  group: mobile-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#mobile-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}$ ]]; then
+            echo "::error::Tag must look like mobile-v1.2.0 (got $GITHUB_REF_NAME)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check
+        run: |
+          npx tsc --noEmit
+          npx eslint src
+
+      - name: Set the app version
+        run: node -e "const f='app.json',c=require('./'+f);c.expo.version=process.env.VERSION;require('fs').writeFileSync(f,JSON.stringify(c,null,2)+'\n')"
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Builds run on EAS; --auto-submit sends each finished build to App Store Connect / Google Play
+      - name: Build and submit
+        run: eas build --platform all --profile production --non-interactive --no-wait --auto-submit
