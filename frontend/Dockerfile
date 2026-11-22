@@ -2,7 +2,18 @@
 FROM node:22.21.1-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# The build tools' native parts (rolldown, lightningcss, tailwind) are optional packages, which npm
+# skips silently when a download fails. Retry downloads, check they load, and reinstall if not.
+RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && for attempt in 1 2 3; do \
+         npm ci --no-audit --no-fund \
+         && node -e "Promise.all(['rolldown','lightningcss','@tailwindcss/oxide'].map(m=>import(m))).then(()=>console.log('native build tools OK'),e=>{console.error(e.message.split('\\n')[0]);process.exit(1)})" \
+         && break; \
+         echo "npm install incomplete (attempt $attempt), retrying..."; rm -rf node_modules; \
+         [ "$attempt" = 3 ] && exit 1; \
+       done
 COPY . .
 # Same-origin API: the browser calls /api/v1 on whatever domain serves the app
 ARG VITE_API_URL=/api/v1
