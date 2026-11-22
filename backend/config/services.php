@@ -38,7 +38,7 @@ return [
     // Phone push notifications (mobile app). Optional access token from expo.dev → Access tokens
     // when "enhanced push security" is on for the project.
     'expo' => [
-        'enabled' => env('EXPO_PUSH_ENABLED', true),
+        'enabled' => env('EXPO_PUSH_ENABLED', false),
         'access_token' => env('EXPO_ACCESS_TOKEN'),
     ],
 

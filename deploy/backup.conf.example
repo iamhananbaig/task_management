@@ -1,0 +1,11 @@
+# /etc/tasks-backup.conf — read by /usr/local/bin/tasks-backup (chmod 600)
+DB_NAME=tasks
+BACKUP_DIR=/var/backups/tasks
+RETENTION_DAYS=14
+# [client] user=... password=... (chmod 600). Use a read-only backup user if you like:
+#   CREATE USER 'backup'@'localhost' IDENTIFIED BY '...';
+#   GRANT SELECT, SHOW VIEW, TRIGGER, LOCK TABLES, EVENT, PROCESS ON *.* TO 'backup'@'localhost';
+MYSQL_DEFAULTS_FILE=/root/.my.cnf
+STORAGE_VOLUME=tasks_storage
+# Strongly recommended: copy backups to another machine (needs SSH key auth for root)
+REMOTE_TARGET=

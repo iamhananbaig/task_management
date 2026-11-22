@@ -1,0 +1,101 @@
+# Task Management — production stack.
+#   web          nginx: serves the React build, passes /api to app (published on 127.0.0.1:5054 only)
+#   app          PHP-FPM 8.4 running the Laravel API
+#   scheduler    same image, runs `php artisan schedule:work` (due reminders, routine runs,
+#                escalation, clean-up — see backend/routes/console.php)
+#   cloudflared  optional Cloudflare Tunnel (profile "tunnel") → web
+# The database is the MySQL installed natively on the VM, reached through its unix socket
+# (mounted from MYSQL_SOCKET_DIR), so MySQL needs no network or grant changes.
+# See deploy/DEPLOY.md.
+name: tasks
+
+x-app-env: &app-env
+  APP_NAME: "Task Management"
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_KEY: ${APP_KEY:?set APP_KEY in .env}
+  APP_URL: ${APP_URL:-http://localhost}
+  FRONTEND_URL: ${APP_URL:-http://localhost}      # links in emails point at the web app
+  APP_TIMEZONE: Asia/Karachi
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-warning}
+  DB_CONNECTION: mysql
+  # Socket (default): the host's mysqld socket dir is mounted at /var/run/mysqld.
+  # TCP instead: set DB_SOCKET= (empty) and DB_HOST=host.docker.internal in .env.
+  DB_SOCKET: ${DB_SOCKET-/var/run/mysqld/mysqld.sock}
+  DB_HOST: ${DB_HOST:-localhost}
+  DB_PORT: ${DB_PORT:-3306}
+  DB_DATABASE: ${DB_DATABASE:-tasks}
+  DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
+  DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+  SESSION_DRIVER: database
+  CACHE_STORE: database
+  QUEUE_CONNECTION: sync
+  FILESYSTEM_DISK: local
+  # Email (manual "email reminder" on a task). MAIL_MAILER=log writes mails to the app log instead.
+  MAIL_MAILER: ${MAIL_MAILER:-log}
+  MAIL_SCHEME: ${MAIL_SCHEME:-}
+  MAIL_HOST: ${MAIL_HOST:-}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_USERNAME: ${MAIL_USERNAME:-}
+  MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-tasks@example.com}
+  MAIL_FROM_NAME: "Task Management"
+  # Expo push was for the old React Native app; the Android app polls for alerts instead
+  EXPO_PUSH_ENABLED: "false"
+
+x-app-volumes: &app-volumes
+  - storage:/var/www/html/storage                                   # attachments, logs
+  - ${MYSQL_SOCKET_DIR:-/var/run/mysqld}:/var/run/mysqld             # host MySQL socket
+
+services:
+  app:
+    build:
+      context: ./backend
+      args:
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}     # optional faster package mirror (see .env.docker.example)
+    image: tasks-app:latest
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
+    volumes: *app-volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  scheduler:
+    image: tasks-app:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      <<: *app-env
+    volumes: *app-volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    build: ./frontend
+    image: tasks-web:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      # Localhost only: Docker bypasses ufw, so 0.0.0.0 would expose the app directly.
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-5054}:80"
+
+  # Only with: docker compose --profile tunnel up -d
+  # Skip it if the VM already runs cloudflared — point that tunnel at http://localhost:5054 instead.
+  cloudflared:
+    image: cloudflare/cloudflared:2025.11.1
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}   # from Cloudflare Zero Trust → Tunnels
+    depends_on:
+      - web
+
+volumes:
+  storage:

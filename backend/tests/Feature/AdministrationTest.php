@@ -78,3 +78,29 @@ it('lists active users for pickers', function () {
     expect($names)->not->toContain('Gone');
     expect(User::count())->toBe(2);
 });
+
+it('creates the first admin from the command line', function () {
+    $this->artisan('tasks:create-admin', ['email' => 'Boss@Example.com', '--name' => 'Boss'])
+        ->expectsQuestion('Password (at least 10 characters)', 'FirstPass1234')
+        ->assertSuccessful();
+
+    $admin = User::where('email', 'boss@example.com')->firstOrFail();
+    expect($admin->hasRole('admin'))->toBeTrue()
+        ->and($admin->password_changed_at)->toBeNull();
+    $this->postJson('/api/v1/login', ['email' => 'boss@example.com', 'password' => 'FirstPass1234'])->assertOk();
+});
+
+it('makes an existing user admin and refuses short passwords', function () {
+    $member = $this->userWithRole('member');
+
+    $this->artisan('tasks:create-admin', ['email' => $member->email])
+        ->expectsQuestion('Password (at least 10 characters)', 'short')
+        ->assertFailed();
+    expect($member->fresh()->hasRole('admin'))->toBeFalse();
+
+    $this->artisan('tasks:create-admin', ['email' => $member->email])
+        ->expectsQuestion('Password (at least 10 characters)', 'ResetPass1234')
+        ->assertSuccessful();
+    expect($member->fresh()->hasRole('admin'))->toBeTrue()
+        ->and($member->fresh()->hasRole('member'))->toBeFalse();
+});
