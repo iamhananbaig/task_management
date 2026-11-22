@@ -100,6 +100,10 @@ export function Board({ statuses, tasks, onAdd }: { statuses: Status[]; tasks: T
       toast.warning("Move not allowed", `You can't move ${task.reference} from ${statusName(fromStatusId)} to ${statusName(toStatusId)}.`)
       return
     }
+    if (choices.every((choice) => choice.requires_attachment) && !task.attachments_count) {
+      toast.warning("Attachment needed", `Open ${task.reference} and attach the supporting document before “${choices[0].label}”.`)
+      return
+    }
     if (choices.length === 1 && !choices[0].requires_comment) {
       move.mutate({ task, transition: choices[0] })
       return

@@ -1,6 +1,9 @@
 /** Spatie permission names (backend App\Support\Permissions). */
 export const Permission = {
   ViewAllProjects: "view all projects",
+  ViewRestrictedProjects: "view restricted projects",
+  ManageTags: "manage tags",
+  ViewReports: "view reports",
   ManageProjects: "manage projects",
   ManageWorkflowTemplates: "manage workflow templates",
   CreateTasks: "create tasks",

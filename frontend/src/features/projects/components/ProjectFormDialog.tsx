@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
@@ -38,6 +40,7 @@ export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [color, setColor] = React.useState("blue")
   const [templateId, setTemplateId] = React.useState("")
   const [memberIds, setMemberIds] = React.useState<string[]>([])
+  const [restricted, setRestricted] = React.useState(false)
 
   const create = useMutation({
     mutationFn: async () =>
@@ -49,6 +52,7 @@ export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpen
           color,
           workflow_template_id: templateId ? Number(templateId) : null,
           member_ids: memberIds.map(Number),
+          is_restricted: restricted,
         })
       ).data.data,
     onSuccess: (project) => {
@@ -137,6 +141,13 @@ export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpen
                 placeholder="Add people…"
               />
             </Field>
+            <div className="flex items-start gap-2.5">
+              <Switch id="project-restricted" checked={restricted} onCheckedChange={setRestricted} />
+              <Label htmlFor="project-restricted" className="flex flex-col items-start gap-0.5">
+                <span>Restricted</span>
+                <span className="text-xs font-normal text-muted-foreground">Only members (and admins) see it — e.g. payroll.</span>
+              </Label>
+            </div>
           </FieldGroup>
           <DialogFooter className="mt-5">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

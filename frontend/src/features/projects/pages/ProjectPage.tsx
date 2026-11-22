@@ -1,9 +1,10 @@
 import * as React from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
-import { GearSixIcon, KanbanIcon, ListBulletsIcon, MagnifyingGlassIcon, PlusIcon } from "@phosphor-icons/react"
+import { ArrowsClockwiseIcon, GearSixIcon, LockSimpleIcon, KanbanIcon, ListBulletsIcon, MagnifyingGlassIcon, PlusIcon } from "@phosphor-icons/react"
 
 import { PageHeader } from "@/components/app/app-layout"
 import { ErrorAlert, Loading } from "@/components/app/shared"
+import { TagFilter } from "@/components/app/tag-filter"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,10 +32,11 @@ export default function ProjectPage() {
   const view = params.get("view") === "list" ? "list" : "board"
   const assignee = params.get("assignee") ?? ""
   const priority = params.get("priority") ?? ""
+  const tag = params.get("tag") ?? ""
   const [search, setSearch] = React.useState(params.get("q") ?? "")
   const debounced = useDebounced(search, 300)
 
-  const filters = { assignee: assignee || undefined, priority: priority || undefined, search: debounced || undefined, all: view === "list" ? 1 : undefined }
+  const filters = { assignee: assignee || undefined, priority: priority || undefined, tag_ids: tag ? [Number(tag)] : undefined, search: debounced || undefined, all: view === "list" ? 1 : undefined }
   const tasks = useBoard(id, filters)
 
   const setParam = (key: string, value: string) => {
@@ -59,11 +61,15 @@ export default function ProjectPage() {
             <ColorDot color={p.color} className="size-2.5" />
             {p.name}
             <span className="font-mono text-sm font-normal text-muted-foreground">{p.key}</span>
+            {p.is_restricted && <LockSimpleIcon className="size-4 text-muted-foreground" aria-label="Restricted project" />}
           </span>
         }
         description={p.description ?? undefined}
         back={{ to: "/projects", label: "Projects" }}
       >
+        <Button variant="outline" render={<Link to={`/projects/${p.id}/routines`} />}>
+          <ArrowsClockwiseIcon /> Routines
+        </Button>
         {p.can?.manage && (
           <Button variant="outline" render={<Link to={`/projects/${p.id}/settings`} />}>
             <GearSixIcon /> Settings
@@ -122,6 +128,7 @@ export default function ProjectPage() {
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        <TagFilter className="shrink-0" value={tag} onChange={(value) => setParam("tag", value)} />
       </div>
 
       <ErrorAlert error={tasks.error} />

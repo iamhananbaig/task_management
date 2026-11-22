@@ -18,6 +18,8 @@ class ProjectResource extends JsonResource
             'key' => $this->key,
             'description' => $this->description,
             'color' => $this->color,
+            'is_restricted' => $this->is_restricted,
+            'escalate_after_days' => $this->escalate_after_days,
             'owner' => new UserSummaryResource($this->whenLoaded('owner')),
             'archived_at' => $this->archived_at,
             'created_at' => $this->created_at,

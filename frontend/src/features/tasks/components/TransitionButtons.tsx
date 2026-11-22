@@ -20,14 +20,19 @@ export function TransitionButtons({ task, className }: { task: Task; className?:
     return <p className={cn("text-xs text-muted-foreground", className)}>No moves available to you at this step.</p>
   }
 
+  const hasFiles = (task.attachments?.length ?? task.attachments_count ?? 0) > 0
+  const needsFile = transitions.filter((transition) => transition.requires_attachment && !hasFiles)
+
   return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
+    <div className={cn("flex flex-col gap-1.5", className)}>
+    <div className="flex flex-wrap gap-2">
       {transitions.map((transition) => (
         <Button
           key={transition.id}
           size="lg"
           variant={BACKWARD.test(transition.label) ? "outline" : "default"}
-          disabled={move.isPending}
+          disabled={move.isPending || needsFile.includes(transition)}
+          title={needsFile.includes(transition) ? "Attach the supporting document first (Files tab)" : undefined}
           onClick={() => (transition.requires_comment ? setAsking(transition) : move.mutate({ task, transition }))}
         >
           {move.isPending && move.variables?.transition.id === transition.id && <Spinner />}
@@ -35,6 +40,12 @@ export function TransitionButtons({ task, className }: { task: Task; className?:
         </Button>
       ))}
       {asking && <MoveDialog task={task} choices={[asking]} onClose={() => setAsking(null)} />}
+    </div>
+    {needsFile.length > 0 && (
+      <p className="text-xs text-amber-700 dark:text-amber-400">
+        Attach the supporting document (Files below) before “{needsFile.map((transition) => transition.label).join("”, “")}”.
+      </p>
+    )}
     </div>
   )
 }

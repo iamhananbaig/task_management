@@ -3,16 +3,18 @@ import { Link } from "react-router-dom"
 import { PageHeader } from "@/components/app/app-layout"
 import { EmptyState, ErrorAlert, Loading, Stat } from "@/components/app/shared"
 import { ProjectCard } from "@/features/projects/components/ProjectCard"
+import { RunRow } from "@/features/routines/RunProgress"
 import { TaskList } from "@/features/projects/components/TaskList"
 import { TaskSheet } from "@/features/tasks/components/TaskSheet"
 import { useAuth } from "@/lib/auth"
-import { useDashboard, useTasks } from "@/lib/queries"
+import { useDashboard, useRecentRuns, useTasks } from "@/lib/queries"
 import { timeAgo } from "@/lib/utils"
 
 /** "My work": counts, what is due, projects and recent activity. */
 export default function DashboardPage() {
   const { user } = useAuth()
   const dashboard = useDashboard()
+  const runs = useRecentRuns()
   const dueSoon = useTasks({ assignee: "me", due: "week", sort: "due_date", per_page: 10 })
   const overdue = useTasks({ assignee: "me", due: "overdue", sort: "due_date", per_page: 10 })
 
@@ -56,6 +58,16 @@ export default function DashboardPage() {
         </section>
 
         <section>
+          {(runs.data?.length ?? 0) > 0 && (
+            <>
+              <h2 className="mb-2 text-sm font-semibold">Periods</h2>
+              <div className="mb-6 flex flex-col divide-y rounded-lg border">
+                {runs.data?.slice(0, 6).map((run) => (
+                  <RunRow key={run.id} run={run} showProject />
+                ))}
+              </div>
+            </>
+          )}
           <h2 className="mb-2 text-sm font-semibold">Recent activity</h2>
           {activity.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing yet.</p>

@@ -47,6 +47,13 @@ class TaskResource extends JsonResource
             'assignee' => new UserSummaryResource($this->whenLoaded('assignee')),
             'reviewer' => new UserSummaryResource($this->whenLoaded('reviewer')),
             'creator' => new UserSummaryResource($this->whenLoaded('creator')),
+            'tags' => $this->whenLoaded('tags', fn () => $this->tags->map(fn ($tag) => [
+                'id' => $tag->id,
+                'name' => $tag->name,
+                'color' => $tag->color,
+                'tag_group_id' => $tag->tag_group_id,
+            ])->values()),
+            'routine_run' => $this->whenLoaded('routineRun', fn () => $this->routineRun ? ['id' => $this->routineRun->id, 'name' => $this->routineRun->name] : null),
             'start_date' => $this->start_date?->format('Y-m-d'),
             'due_date' => $this->due_date?->format('Y-m-d'),
             'is_overdue' => $this->relationLoaded('status') ? $this->isOverdue() : null,
@@ -67,6 +74,7 @@ class TaskResource extends JsonResource
                         'label' => $transition->label,
                         'to_status_id' => $transition->to_status_id,
                         'requires_comment' => $transition->requires_comment,
+                        'requires_attachment' => $transition->requires_attachment,
                     ])->values(),
             ),
             $this->mergeWhen($this->detail, fn () => [

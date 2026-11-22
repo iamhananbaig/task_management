@@ -28,6 +28,7 @@ export interface Transition {
   label: string
   actors: TransitionActor[]
   requires_comment: boolean
+  requires_attachment: boolean
 }
 
 export interface Project {
@@ -36,6 +37,8 @@ export interface Project {
   key: string
   description: string | null
   color: string
+  is_restricted: boolean
+  escalate_after_days: number | null
   owner?: UserSummary
   archived_at: string | null
   created_at: string
@@ -54,6 +57,7 @@ export interface AvailableTransition {
   label: string
   to_status_id: number
   requires_comment: boolean
+  requires_attachment: boolean
 }
 
 export interface ChecklistItem {
@@ -81,6 +85,8 @@ export interface Task {
   description: string | null
   status?: Status
   priority: Priority
+  tags?: TaskTag[]
+  routine_run?: { id: number; name: string } | null
   assignee?: UserSummary | null
   reviewer?: UserSummary | null
   creator?: UserSummary | null
@@ -134,9 +140,10 @@ export interface AppNotification {
   id: string
   data: {
     kind: string
-    task_id: number
+    task_id: number | null
+    run_id?: number
     project_id: number
-    reference: string
+    reference: string | null
     title: string
     body: string
   }
@@ -154,10 +161,78 @@ export interface WorkflowTemplate {
 
 export interface WorkflowDefinition {
   statuses: { key: string; name: string; color: string; type: StatusType }[]
-  transitions: { from: string; to: string; label: string; actors: TransitionActor[]; requires_comment: boolean }[]
+  transitions: { from: string; to: string; label: string; actors: TransitionActor[]; requires_comment: boolean; requires_attachment?: boolean }[]
 }
 
 export interface Paginated<T> {
   data: T[]
   meta?: { current_page: number; last_page: number; total: number; per_page: number }
+}
+
+export interface TaskTag {
+  id: number
+  name: string
+  color: string
+  tag_group_id: number
+}
+
+export interface TagGroup {
+  id: number
+  name: string
+  tags: (TaskTag & { is_active: boolean })[]
+}
+
+export type Frequency = "weekly" | "monthly" | "quarterly" | "half_yearly" | "yearly"
+export type DueRule = "days_after_end" | "day_of_next_month" | "days_before_end"
+
+export interface RunProgress {
+  total: number
+  done: number
+  review: number
+  overdue: number
+  on_time: number
+}
+
+export interface Run {
+  id: number
+  routine_id: number
+  project_id: number
+  name: string
+  period_start: string
+  period_end: string
+  created_at: string
+  progress: RunProgress
+  routine?: { id: number; name: string }
+  project?: { id: number; name: string; key: string; color: string }
+}
+
+export interface RoutineItem {
+  id?: number
+  title: string
+  description: string | null
+  priority: Priority
+  assignee_id: number | null
+  reviewer_id: number | null
+  checklist: string[]
+  tag_ids: number[]
+  due_rule: DueRule
+  due_value: number
+}
+
+export interface Routine {
+  id: number
+  project_id: number
+  name: string
+  description?: string | null
+  frequency: Frequency
+  lead_days: number
+  is_active: boolean
+  next_period_end: string
+  next_period_name: string
+  next_run_on: string
+  items_count: number
+  last_run: { id: number; name: string } | null
+  items?: RoutineItem[]
+  runs?: Run[]
+  can_manage?: boolean
 }

@@ -1,4 +1,4 @@
-import { BellIcon, ChatCircleIcon, ClockIcon, UserPlusIcon, WarningIcon, ArrowsLeftRightIcon } from "@phosphor-icons/react"
+import { ArrowsClockwiseIcon, BellIcon, ChatCircleIcon, ClockIcon, UserPlusIcon, WarningIcon, ArrowsLeftRightIcon } from "@phosphor-icons/react"
 
 import type { AppNotification } from "@/lib/types"
 import { cn, timeAgo } from "@/lib/utils"
@@ -10,6 +10,8 @@ const icons: Record<string, typeof BellIcon> = {
   commented: ChatCircleIcon,
   due_soon: ClockIcon,
   overdue: WarningIcon,
+  escalated: WarningIcon,
+  run_started: ArrowsClockwiseIcon,
 }
 
 export function NotificationItem({ notification, onOpen, compact }: { notification: AppNotification; onOpen: () => void; compact?: boolean }) {
@@ -18,7 +20,7 @@ export function NotificationItem({ notification, onOpen, compact }: { notificati
   return (
     <li>
       <button type="button" onClick={onOpen} className={cn("flex w-full gap-3 px-3 text-left hover:bg-muted/50", compact ? "py-2" : "py-3", unread && "bg-primary/5")}>
-        <Icon className={cn("mt-0.5 size-4 shrink-0", notification.data.kind === "overdue" ? "text-destructive" : "text-muted-foreground")} />
+        <Icon className={cn("mt-0.5 size-4 shrink-0", ["overdue", "escalated"].includes(notification.data.kind) ? "text-destructive" : "text-muted-foreground")} />
         <div className="min-w-0 flex-1">
           <div className={cn("text-sm", unread && "font-semibold")}>{notification.data.title}</div>
           <div className={cn("text-xs text-muted-foreground", compact && "line-clamp-2")}>{notification.data.body}</div>

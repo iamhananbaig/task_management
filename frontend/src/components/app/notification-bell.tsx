@@ -47,7 +47,7 @@ export function NotificationBell() {
                 notification={notification}
                 onOpen={() => {
                   if (!notification.read_at) read.mutate(notification.id)
-                  navigate(`/tasks/${notification.data.task_id}`)
+                  navigate(notification.data.task_id ? `/tasks/${notification.data.task_id}` : `/runs/${notification.data.run_id}`)
                 }}
               />
             ))}

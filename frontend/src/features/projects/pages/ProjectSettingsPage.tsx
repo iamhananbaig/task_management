@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
@@ -75,10 +77,20 @@ function DetailsForm({ project }: { project: Project }) {
   const [key, setKey] = React.useState(project.key)
   const [description, setDescription] = React.useState(project.description ?? "")
   const [color, setColor] = React.useState(project.color)
+  const [restricted, setRestricted] = React.useState(project.is_restricted)
+  const [escalate, setEscalate] = React.useState(project.escalate_after_days === null ? "" : String(project.escalate_after_days))
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
   const save = useMutation({
-    mutationFn: async () => api.put(`/projects/${project.id}`, { name, key, description: description || null, color }),
+    mutationFn: async () =>
+      api.put(`/projects/${project.id}`, {
+        name,
+        key,
+        description: description || null,
+        color,
+        is_restricted: restricted,
+        escalate_after_days: escalate ? Number(escalate) : null,
+      }),
     onSuccess: () => toast.success("Project saved"),
   })
   const archive = useMutation({
@@ -121,6 +133,27 @@ function DetailsForm({ project }: { project: Project }) {
             <FieldLabel>Colour</FieldLabel>
             <ColorPicker value={color} onChange={setColor} />
           </Field>
+          <Field data-invalid={!!errors.escalate_after_days || undefined}>
+            <FieldLabel htmlFor="settings-escalate">Escalate overdue tasks to managers after</FieldLabel>
+            <NativeSelect id="settings-escalate" className="w-48" value={escalate} onChange={(event) => setEscalate(event.target.value)}>
+              <NativeSelectOption value="">Never</NativeSelectOption>
+              {[1, 2, 3, 5, 7, 10, 14].map((days) => (
+                <NativeSelectOption key={days} value={days}>
+                  {days} day{days > 1 ? "s" : ""} overdue
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <FieldDescription>The project's managers get one notice per task (the assignee already gets the overdue reminder).</FieldDescription>
+          </Field>
+          <div className="flex items-start gap-2.5">
+            <Switch id="settings-restricted" checked={restricted} onCheckedChange={setRestricted} />
+            <Label htmlFor="settings-restricted" className="flex flex-col items-start gap-0.5">
+              <span>Restricted project</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                Only members and people with “view restricted projects” see it and its tasks — e.g. payroll. Others who see all projects won't.
+              </span>
+            </Label>
+          </div>
           <div>
             <Button type="submit" size="lg" disabled={save.isPending}>
               {save.isPending && <Spinner />} Save

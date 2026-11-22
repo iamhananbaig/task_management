@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'key', 'description', 'color', 'owner_id', 'archived_at'])]
+#[Fillable(['name', 'key', 'description', 'color', 'is_restricted', 'escalate_after_days', 'owner_id', 'archived_at'])]
 class Project extends Model
 {
     /** @use HasFactory<ProjectFactory> */
@@ -21,7 +21,7 @@ class Project extends Model
 
     protected function casts(): array
     {
-        return ['archived_at' => 'datetime'];
+        return ['archived_at' => 'datetime', 'is_restricted' => 'boolean', 'escalate_after_days' => 'integer'];
     }
 
     /** @return BelongsTo<User, $this> */
@@ -54,13 +54,38 @@ class Project extends Model
         return $this->hasMany(Task::class);
     }
 
-    /** Projects the user may open: all with "view all projects", otherwise the ones they belong to. */
+    /** @return HasMany<Routine, $this> */
+    public function routines(): HasMany
+    {
+        return $this->hasMany(Routine::class)->orderBy('name');
+    }
+
+    /**
+     * Projects the user may open: the ones they belong to; with "view all projects" every project
+     * except restricted ones, which also need membership or "view restricted projects".
+     */
     public function scopeVisibleTo(Builder $query, User $user): void
     {
-        if ($user->can('view all projects')) {
+        $member = fn (Builder $members) => $members->whereKey($user->id);
+
+        if (! $user->can('view all projects')) {
+            $query->whereHas('members', $member);
+
             return;
         }
-        $query->whereHas('members', fn (Builder $members) => $members->whereKey($user->id));
+        if (! $user->can('view restricted projects')) {
+            $query->where(fn (Builder $inner) => $inner->where('is_restricted', false)->orWhereHas('members', $member));
+        }
+    }
+
+    /** Same rule as scopeVisibleTo, for one project. */
+    public function isVisibleTo(User $user): bool
+    {
+        if ($this->isMember($user)) {
+            return true;
+        }
+
+        return $user->can('view all projects') && (! $this->is_restricted || $user->can('view restricted projects'));
     }
 
     public function isMember(User $user): bool

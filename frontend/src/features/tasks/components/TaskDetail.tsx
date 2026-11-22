@@ -39,6 +39,7 @@ import { Checklist } from "@/features/tasks/components/Checklist"
 import { Comments } from "@/features/tasks/components/Comments"
 import { EmailReminderDialog } from "@/features/tasks/components/EmailReminderDialog"
 import { TaskFields } from "@/features/tasks/components/TaskFields"
+import { TaskTags } from "@/features/tasks/components/TaskTags"
 import { TransitionButtons } from "@/features/tasks/components/TransitionButtons"
 import { useUpdateTask } from "@/features/tasks/lib/use-update-task"
 import { api } from "@/lib/api"
@@ -83,11 +84,17 @@ function TaskDetailBody({ task, inSheet, onDeleted }: { task: Task; inSheet?: bo
           <StatusBadge status={task.status} />
           <DueDate date={task.due_date} done={task.status?.type === "done"} />
           {task.completed_at && <span className="text-xs text-muted-foreground">Completed {new Date(task.completed_at).toLocaleDateString()}</span>}
+          {task.routine_run && (
+            <Link to={`/runs/${task.routine_run.id}`} className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+              Part of {task.routine_run.name}
+            </Link>
+          )}
         </div>
       </header>
 
       <TransitionButtons task={task} />
       <TaskFields task={task} />
+      <TaskTags task={task} />
       <EditableDescription task={task} />
       <Checklist task={task} />
 

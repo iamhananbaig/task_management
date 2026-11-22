@@ -9,8 +9,11 @@ use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectMemberController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\RoutineController;
 use App\Http\Controllers\Api\SearchController;
+use App\Http\Controllers\Api\TagController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskDetailsController;
 use App\Http\Controllers\Api\TaskWorkflowController;
@@ -59,6 +62,29 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects/{project}/workflow', [WorkflowController::class, 'show']);
         Route::put('/projects/{project}/workflow', [WorkflowController::class, 'update']);
         Route::post('/projects/{project}/workflow/save-as-template', [WorkflowController::class, 'saveAsTemplate']);
+
+        // ---- Routines (recurring tasks / period close) ----
+        Route::get('/projects/{project}/routines', [RoutineController::class, 'index']);
+        Route::post('/projects/{project}/routines', [RoutineController::class, 'store']);
+        Route::get('/routines/{routine}', [RoutineController::class, 'show']);
+        Route::put('/routines/{routine}', [RoutineController::class, 'update']);
+        Route::delete('/routines/{routine}', [RoutineController::class, 'destroy']);
+        Route::post('/routines/{routine}/start', [RoutineController::class, 'startNow']);
+        Route::get('/runs', [RoutineController::class, 'recentRuns']);
+        Route::get('/runs/{run}', [RoutineController::class, 'run']);
+
+        // ---- Tags ----
+        Route::get('/tags', [TagController::class, 'index']);
+        Route::middleware('permission:manage tags')->group(function () {
+            Route::post('/tag-groups', [TagController::class, 'storeGroup']);
+            Route::put('/tag-groups/{group}', [TagController::class, 'updateGroup']);
+            Route::delete('/tag-groups/{group}', [TagController::class, 'destroyGroup']);
+            Route::post('/tag-groups/{group}/tags', [TagController::class, 'store']);
+            Route::put('/tags/{tag}', [TagController::class, 'update']);
+            Route::delete('/tags/{tag}', [TagController::class, 'destroy']);
+        });
+
+        Route::get('/reports', ReportController::class)->middleware('permission:view reports');
 
         // ---- Workflow templates ----
         Route::get('/workflow-templates', [WorkflowTemplateController::class, 'index']);

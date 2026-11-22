@@ -1,6 +1,7 @@
 import { ChatCircleIcon, CheckSquareIcon, PaperclipIcon } from "@phosphor-icons/react"
 
 import { DueDate, PriorityMark, UserAvatar } from "@/features/tasks/components/badges"
+import { TagChips } from "@/features/tasks/components/TaskTags"
 import type { Task } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -25,6 +26,7 @@ export function TaskCard({ task, onOpen, dragging, className }: { task: Task; on
         <span className={cn("leading-snug font-medium", done && "text-muted-foreground line-through")}>{task.title}</span>
         <PriorityMark priority={task.priority} />
       </div>
+      <TagChips tags={task.tags} />
       <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
         <span className="font-mono">{task.reference}</span>
         <DueDate date={task.due_date} done={done} />

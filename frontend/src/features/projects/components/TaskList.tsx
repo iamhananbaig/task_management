@@ -3,6 +3,7 @@ import { useTable } from "@tanstack/react-table"
 import { DataTable } from "@/components/app/data-table"
 import { columnHelper, features } from "@/components/app/data-table-columns"
 import { DueDate, PriorityMark, StatusBadge, UserName } from "@/features/tasks/components/badges"
+import { TagChips } from "@/features/tasks/components/TaskTags"
 import { useOpenTask } from "@/features/tasks/lib/use-open-task"
 import { priorities } from "@/lib/labels"
 import type { Task } from "@/lib/types"
@@ -18,7 +19,12 @@ const columns = helper.columns([
   helper.accessor("title", {
     header: "Title",
     meta: { mobile: "title" },
-    cell: (info) => <span className="font-medium">{info.getValue()}</span>,
+    cell: (info) => (
+      <span className="flex flex-col gap-1">
+        <span className="font-medium">{info.getValue()}</span>
+        <TagChips tags={info.row.original.tags} />
+      </span>
+    ),
   }),
   helper.accessor((task) => task.status?.position ?? 0, {
     id: "status",

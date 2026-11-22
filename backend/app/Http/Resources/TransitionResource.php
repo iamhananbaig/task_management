@@ -17,6 +17,7 @@ class TransitionResource extends JsonResource
             'label' => $this->label,
             'actors' => $this->actors,
             'requires_comment' => $this->requires_comment,
+            'requires_attachment' => $this->requires_attachment,
         ];
     }
 }

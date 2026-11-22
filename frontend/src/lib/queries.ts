@@ -7,6 +7,9 @@ import type {
   Comment,
   Paginated,
   Project,
+  Routine,
+  Run,
+  TagGroup,
   Status,
   Task,
   Transition,
@@ -21,6 +24,8 @@ import type {
 
 export type TaskFilters = {
   project_id?: number
+  routine_run_id?: number
+  tag_ids?: number[]
   assignee?: string
   reviewer?: string
   status_id?: number
@@ -139,4 +144,38 @@ export const useNotifications = (unreadOnly = false) =>
       (await api.get<{ data: AppNotification[]; unread: number }>("/notifications", { params: { unread: unreadOnly ? 1 : 0 } })).data,
     // The bell polls so new assignments show without a reload
     refetchInterval: 60_000,
+  })
+
+export const useTagGroups = () =>
+  useQuery({
+    queryKey: ["tags"],
+    queryFn: async () => (await api.get<{ data: TagGroup[] }>("/tags")).data.data,
+    staleTime: 5 * 60_000,
+  })
+
+export const useRoutines = (projectId: number | undefined) =>
+  useQuery({
+    queryKey: ["projects", projectId, "routines"],
+    queryFn: async () => (await api.get<{ data: Routine[] }>(`/projects/${projectId}/routines`)).data.data,
+    enabled: !!projectId,
+  })
+
+export const useRoutine = (id: number | string | undefined) =>
+  useQuery({
+    queryKey: ["routines", Number(id)],
+    queryFn: async () => (await api.get<{ data: Routine }>(`/routines/${id}`)).data.data,
+    enabled: !!id && id !== "new",
+  })
+
+export const useRun = (id: number | string | undefined) =>
+  useQuery({
+    queryKey: ["runs", Number(id)],
+    queryFn: async () => (await api.get<{ data: Run }>(`/runs/${id}`)).data.data,
+    enabled: !!id,
+  })
+
+export const useRecentRuns = () =>
+  useQuery({
+    queryKey: ["runs", "recent"],
+    queryFn: async () => (await api.get<{ data: Run[] }>("/runs")).data.data,
   })

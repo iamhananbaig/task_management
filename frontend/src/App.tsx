@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import LoginPage from "@/features/auth/pages/LoginPage"
 import { apiErrorMessage } from "@/lib/api"
+import { httpStatus } from "@/lib/errors"
 import { useAuth } from "@/lib/auth"
 import { AuthProvider } from "@/lib/auth-provider"
 import { toast } from "@/lib/toast"
@@ -24,13 +25,26 @@ const NotificationsPage = lazy(() => import("@/features/notifications/Notificati
 const UsersPage = lazy(() => import("@/features/admin/pages/UsersPage"))
 const RolesPage = lazy(() => import("@/features/admin/pages/RolesPage"))
 const WorkflowTemplatesPage = lazy(() => import("@/features/admin/pages/WorkflowTemplatesPage"))
+const RoutinesPage = lazy(() => import("@/features/routines/RoutinesPage"))
+const RoutineEditorPage = lazy(() => import("@/features/routines/RoutineEditorPage"))
+const RunPage = lazy(() => import("@/features/routines/RunPage"))
+const TagsPage = lazy(() => import("@/features/admin/pages/TagsPage"))
+const ReportsPage = lazy(() => import("@/features/reports/ReportsPage"))
 const AuditLogPage = lazy(() => import("@/features/admin/pages/AuditLogPage"))
 
 // Every successful change marks all cached data stale; failed changes without their own
 // handler show the server's message (e.g. "Only the reviewer can …").
 const queryClient: QueryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30_000, refetchOnWindowFocus: true },
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: true,
+      // No access / not found won't change on retry: show the message at once
+      retry: (count, error) => {
+        const status = httpStatus(error)
+        return (status === undefined || status >= 500) && count < 2
+      },
+    },
   },
   mutationCache: new MutationCache({
     onSuccess: (): Promise<void> => queryClient.invalidateQueries(),
@@ -56,6 +70,11 @@ function AppRoutes() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:id" element={<ProjectPage />} />
           <Route path="/projects/:id/settings" element={<ProjectSettingsPage />} />
+          <Route path="/projects/:id/routines" element={<RoutinesPage />} />
+          <Route path="/projects/:id/routines/:routineId" element={<RoutineEditorPage />} />
+          <Route path="/runs/:id" element={<RunPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/tags" element={<TagsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/bin" element={<BinPage />} />
           <Route path="/users" element={<UsersPage />} />

@@ -62,7 +62,7 @@ class TaskController extends Controller
         $doneIds = $project->statuses->filter->isDone()->pluck('id');
 
         $query = Task::where('project_id', $project->id)
-            ->with(['status', 'assignee:id,name,email', 'reviewer:id,name,email'])
+            ->with(['status', 'assignee:id,name,email', 'reviewer:id,name,email', 'tags', 'routineRun:id,name'])
             ->withCount(self::listCounts())
             ->when(! $request->boolean('all'), fn (Builder $query) => $query->where(fn (Builder $inner) => $inner
                 ->whereNotIn('status_id', $doneIds)
@@ -137,7 +137,7 @@ class TaskController extends Controller
     /** @return array<int|string, mixed> */
     public static function listRelations(): array
     {
-        return ['project:id,key,name,color,archived_at', 'status', 'assignee:id,name,email', 'reviewer:id,name,email'];
+        return ['project:id,key,name,color,archived_at,is_restricted', 'status', 'assignee:id,name,email', 'reviewer:id,name,email', 'tags', 'routineRun:id,name'];
     }
 
     /** @return array<int|string, mixed> */
@@ -166,6 +166,13 @@ class TaskController extends Controller
             })
             ->when($request->input('reviewer'), fn (Builder $q, string $reviewer) => $q->where('reviewer_id', $reviewer === 'me' ? $user->id : (int) $reviewer))
             ->when($request->integer('status_id'), fn (Builder $q, int $id) => $q->where('status_id', $id))
+            ->when($request->integer('routine_run_id'), fn (Builder $q, int $id) => $q->where('routine_run_id', $id))
+            // tag_ids[]=3&tag_ids[]=7: tasks with all of these tags
+            ->when(array_filter((array) $request->input('tag_ids', [])), function (Builder $q, array $tagIds) {
+                foreach ($tagIds as $tagId) {
+                    $q->whereHas('tags', fn (Builder $tags) => $tags->whereKey((int) $tagId));
+                }
+            })
             ->when($request->input('status_type'), fn (Builder $q, string $type) => $q->whereHas('status', fn (Builder $s) => $s->where('type', $type)))
             ->when($request->input('priority'), fn (Builder $q, string $priority) => $q->where('priority', $priority))
             ->when($request->input('due'), function (Builder $q, string $due) {
@@ -186,7 +193,7 @@ class TaskController extends Controller
                 $q->where(fn (Builder $inner) => $inner->where('title', 'like', "%{$search}%")->orWhere('description', 'like', "%{$search}%"));
             });
 
-        $statusFilter = $request->input('status_type') || $request->integer('status_id');
+        $statusFilter = $request->input('status_type') || $request->integer('status_id') || $request->integer('routine_run_id');
         if (! $statusFilter && $sortable && ! $request->boolean('include_done')) {
             $query->open();
         }
@@ -218,7 +225,7 @@ class TaskController extends Controller
         return $task->load([
             'project.transitions', 'project.members:id', 'status',
             'assignee:id,name,email', 'reviewer:id,name,email', 'creator:id,name,email',
-            'checklist', 'attachments.user:id,name,email', 'watchers:id,name,email',
+            'checklist', 'attachments.user:id,name,email', 'watchers:id,name,email', 'tags', 'routineRun:id,name',
         ])->loadCount(self::listCounts());
     }
 }

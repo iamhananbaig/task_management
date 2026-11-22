@@ -55,6 +55,9 @@ return [
     'url' => env('APP_URL', 'http://localhost'),
 
     // Where the React app is served (links in emails). Same as APP_URL behind the Docker nginx.
+    // Last month of the fiscal year (6 = June: Jul–Jun years). Routine periods follow it.
+    'fiscal_year_end_month' => (int) env('FISCAL_YEAR_END_MONTH', 6),
+
     'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost:5173')),
 
     /*

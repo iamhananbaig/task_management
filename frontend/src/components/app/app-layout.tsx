@@ -4,6 +4,7 @@ import { Loading } from "@/components/app/shared"
 import {
   ArrowLeftIcon,
   BellIcon,
+  ChartBarIcon,
   CheckSquareOffsetIcon,
   ClockCounterClockwiseIcon,
   FlowArrowIcon,
@@ -14,6 +15,7 @@ import {
   ShieldCheckIcon,
   SignOutIcon,
   SunIcon,
+  TagIcon,
   TrashIcon,
   UsersIcon,
 } from "@phosphor-icons/react"
@@ -52,8 +54,13 @@ const navigation: NavGroup[] = [
     ],
   },
   {
+    label: "Insights",
+    items: [{ to: "/reports", label: "Reports", icon: ChartBarIcon, anyOf: [Permission.ViewReports] }],
+  },
+  {
     label: "Admin",
     items: [
+      { to: "/tags", label: "Tags", icon: TagIcon, anyOf: [Permission.ManageTags] },
       { to: "/workflow-templates", label: "Workflow templates", icon: FlowArrowIcon, anyOf: [Permission.ManageWorkflowTemplates] },
       { to: "/users", label: "Users", icon: UsersIcon, anyOf: [Permission.ViewUsers] },
       { to: "/roles", label: "Roles", icon: ShieldCheckIcon, anyOf: [Permission.ViewRoles] },

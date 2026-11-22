@@ -6,7 +6,7 @@ use App\Models\Project;
 use App\Models\User;
 
 /**
- * View: members, or anyone with "view all projects".
+ * View: members, or anyone with "view all projects" (restricted projects: also "view restricted projects").
  * Manage (settings, members, workflow, archive): the project's managers, or "manage projects"
  * holders who can see it.
  */
@@ -14,7 +14,7 @@ class ProjectPolicy
 {
     public function view(User $user, Project $project): bool
     {
-        return $user->can('view all projects') || $project->isMember($user);
+        return $project->isVisibleTo($user);
     }
 
     public function create(User $user): bool

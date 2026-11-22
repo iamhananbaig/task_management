@@ -5,6 +5,7 @@ use App\Models\AuditLog;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskComment;
+use App\Models\TaskStatusChange;
 use App\Notifications\TaskMoved;
 use Illuminate\Support\Facades\Notification;
 
@@ -20,6 +21,8 @@ beforeEach(function () {
         'reviewer_id' => $this->reviewer->id,
         'creator_id' => $this->lead->id,
     ]);
+    // Submit for review needs evidence (see "refuses to submit without an attachment")
+    $this->task->attachments()->create(['user_id' => $this->assignee->id, 'original_name' => 'rec.xlsx', 'path' => 'attachments/x/rec.xlsx', 'size' => 10]);
     $this->move = fn (string $label, array $body = []) => $this->postJson(
         "/api/v1/tasks/{$this->task->id}/transitions/".$this->transition($this->project, $label),
         $body,
@@ -45,6 +48,25 @@ it('runs the review cycle: submit, send back with a reason, submit, approve', fu
     expect($this->task->fresh()->completed_at)->not->toBeNull()
         ->and(TaskComment::where('task_id', $this->task->id)->value('body'))->toBe('Fix the header')
         ->and(AuditLog::where('task_id', $this->task->id)->where('action', 'moved')->count())->toBe(4);
+});
+
+it('refuses to submit without an attachment', function () {
+    $this->task->attachments()->delete();
+    $this->signIn($this->assignee);
+
+    ($this->move)('Submit for review')
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.attachment.0', 'Attach the supporting document before "Submit for review".');
+    expect($this->task->fresh()->status->name)->toBe('In progress');
+});
+
+it('records every status change for the reports', function () {
+    $this->signIn($this->assignee);
+    ($this->move)('Submit for review');
+    $this->signIn($this->reviewer);
+    ($this->move)('Approve');
+
+    expect(TaskStatusChange::where('task_id', $this->task->id)->pluck('to_type')->all())->toBe(['review', 'done']);
 });
 
 it('lets the assignee pull a task back from review', function () {

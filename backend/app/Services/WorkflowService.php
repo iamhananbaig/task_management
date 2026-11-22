@@ -9,6 +9,7 @@ use App\Models\ProjectStatus;
 use App\Models\ProjectTransition;
 use App\Models\Task;
 use App\Models\TaskComment;
+use App\Models\TaskStatusChange;
 use App\Models\User;
 use App\Notifications\TaskMoved;
 use App\Support\Audit;
@@ -50,6 +51,7 @@ class WorkflowService
             "{$prefix}transitions.*.actors" => ['required', 'array', 'min:1'],
             "{$prefix}transitions.*.actors.*" => [Rule::enum(TransitionActor::class)],
             "{$prefix}transitions.*.requires_comment" => ['boolean'],
+            "{$prefix}transitions.*.requires_attachment" => ['boolean'],
         ];
     }
 
@@ -187,6 +189,7 @@ class WorkflowService
                 'label' => $transition->label,
                 'actors' => $transition->actors,
                 'requires_comment' => $transition->requires_comment,
+                'requires_attachment' => $transition->requires_attachment,
             ])->values()->all(),
         ];
     }
@@ -251,6 +254,9 @@ class WorkflowService
             if ($transition->requires_comment && $comment === null) {
                 throw ValidationException::withMessages(['comment' => ["\"{$transition->label}\" needs a comment explaining why."]]);
             }
+            if ($transition->requires_attachment && ! $locked->attachments()->exists()) {
+                throw ValidationException::withMessages(['attachment' => ["Attach the supporting document before \"{$transition->label}\"."]]);
+            }
 
             $from = $locked->status;
             $to = $transition->toStatus;
@@ -259,6 +265,7 @@ class WorkflowService
             $locked->completed_at = $to->isDone() ? ($locked->completed_at ?? now()) : null;
             $locked->position = (int) Task::where('status_id', $to->id)->max('position') + 1;
             $locked->saveQuietly();
+            self::recordStatusChange($locked, $from, $to, $user);
 
             if ($comment !== null) {
                 TaskComment::create(['task_id' => $locked->id, 'user_id' => $user->id, 'body' => $comment]);
@@ -280,6 +287,20 @@ class WorkflowService
         return $task;
     }
 
+    /** One row per status change (from null on creation), for the review-time report. */
+    public static function recordStatusChange(Task $task, ?ProjectStatus $from, ProjectStatus $to, ?User $user): void
+    {
+        TaskStatusChange::create([
+            'task_id' => $task->id,
+            'project_id' => $task->project_id,
+            'from_status_id' => $from?->id,
+            'to_status_id' => $to->id,
+            'from_type' => $from?->type->value,
+            'to_type' => $to->type->value,
+            'user_id' => $user?->id,
+        ]);
+    }
+
     /**
      * @param  array<string, int>  $ids  status key => id
      */
@@ -292,6 +313,7 @@ class WorkflowService
                 'label' => $transition['label'],
                 'actors' => array_values(array_unique($transition['actors'])),
                 'requires_comment' => (bool) ($transition['requires_comment'] ?? false),
+                'requires_attachment' => (bool) ($transition['requires_attachment'] ?? false),
                 'position' => $position,
             ]);
         }

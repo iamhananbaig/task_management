@@ -52,6 +52,8 @@ class ProjectController extends Controller
                 'key' => strtoupper($validated['key']),
                 'description' => $validated['description'] ?? null,
                 'color' => $validated['color'] ?? 'blue',
+                'is_restricted' => $validated['is_restricted'] ?? false,
+                'escalate_after_days' => array_key_exists('escalate_after_days', $validated) ? $validated['escalate_after_days'] : 2,
                 'owner_id' => $user->id,
             ]);
             $project->members()->attach($user->id, ['role' => ProjectRole::Manager->value]);

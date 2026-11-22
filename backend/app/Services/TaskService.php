@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\Project;
+use App\Models\Tag;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssigned;
+use App\Support\Audit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -15,11 +17,13 @@ class TaskService
     /**
      * @param  array<string, mixed>  $data  validated StoreTaskRequest data
      */
-    public function create(Project $project, array $data, User $creator): Task
+    public function create(Project $project, array $data, User $creator, bool $notify = true): Task
     {
         $this->assertMembers($project, $data);
+        $tagIds = $this->validTagIds($data['tag_ids'] ?? []);
+        unset($data['tag_ids']);
 
-        $task = DB::transaction(function () use ($project, $data, $creator) {
+        $task = DB::transaction(function () use ($project, $data, $creator, $tagIds) {
             /** @var Project $locked */
             $locked = Project::lockForUpdate()->findOrFail($project->id);
             $status = $locked->initialStatus();
@@ -32,7 +36,14 @@ class TaskService
             $task->position = (int) Task::where('status_id', $status->id)->max('position') + 1;
             $task->completed_at = $status->isDone() ? now() : null;
             $task->setRelation('project', $locked);
+            foreach (['routine_run_id', 'routine_item_id'] as $link) {
+                if (isset($data[$link])) {
+                    $task->{$link} = $data[$link];
+                }
+            }
             $task->save();
+            $task->tags()->sync($tagIds);
+            WorkflowService::recordStatusChange($task, null, $status, $creator);
 
             $locked->increment('next_task_number');
             $task->watchers()->syncWithoutDetaching(array_filter([$creator->id, $task->assignee_id, $task->reviewer_id]));
@@ -40,7 +51,9 @@ class TaskService
             return $task;
         });
 
-        $this->notifyAssignment($task, $creator, null, null);
+        if ($notify) {
+            $this->notifyAssignment($task, $creator, null, null);
+        }
 
         return $task;
     }
@@ -54,8 +67,24 @@ class TaskService
 
         $previousAssignee = $task->assignee_id;
         $previousReviewer = $task->reviewer_id;
+        $tagIds = array_key_exists('tag_ids', $data) ? $this->validTagIds($data['tag_ids'] ?? []) : null;
+        unset($data['tag_ids']);
 
-        $task->update($data);
+        $task->fill($data);
+        // A new due date gets a fresh escalation
+        if ($task->isDirty('due_date')) {
+            $task->escalated_at = null;
+        }
+        $task->save();
+
+        if ($tagIds !== null) {
+            $before = $task->tags()->pluck('name')->sort()->values()->all();
+            $task->tags()->sync($tagIds);
+            $after = $task->tags()->pluck('name')->sort()->values()->all();
+            if ($before !== $after) {
+                Audit::log('tags changed', 'Tags: '.(implode(', ', $after) ?: 'none'), $task, ['tags' => [implode(', ', $before), implode(', ', $after)]]);
+            }
+        }
         $task->watchers()->syncWithoutDetaching(array_filter([$task->assignee_id, $task->reviewer_id]));
 
         $this->notifyAssignment($task, $editor, $previousAssignee, $previousReviewer);
@@ -78,6 +107,30 @@ class TaskService
                 Task::whereKey($id)->update(['position' => $index]);
             }
         });
+    }
+
+    /**
+     * Active tags only, at most one per tag group.
+     *
+     * @param  array<int|string>  $ids
+     * @return list<int>
+     */
+    public function validTagIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (! $ids) {
+            return [];
+        }
+        $tags = Tag::with('group')->whereIn('id', $ids)->where('is_active', true)->get();
+        if ($tags->count() !== count($ids)) {
+            throw ValidationException::withMessages(['tag_ids' => ['A chosen tag does not exist or is no longer in use.']]);
+        }
+        $duplicate = $tags->groupBy('tag_group_id')->first(fn ($group) => $group->count() > 1);
+        if ($duplicate) {
+            throw ValidationException::withMessages(['tag_ids' => ["Choose one {$duplicate->first()->group->name} only."]]);
+        }
+
+        return $ids;
     }
 
     /**

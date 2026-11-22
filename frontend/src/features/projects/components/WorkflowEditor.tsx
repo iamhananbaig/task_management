@@ -36,6 +36,7 @@ function fromServer(statuses: Status[], transitions: Transition[]) {
       label: transition.label,
       actors: transition.actors,
       requires_comment: transition.requires_comment,
+      requires_attachment: transition.requires_attachment,
     })),
   }
 }
@@ -88,7 +89,7 @@ export function WorkflowEditor({ projectId, statuses: serverStatuses, transition
 
   const updateTransition = (index: number, patch: Partial<EditTransition>) => setTransitions((list) => list.map((transition, i) => (i === index ? { ...transition, ...patch } : transition)))
   const addTransition = () =>
-    setTransitions((list) => [...list, { from: statuses[0]?.key ?? "", to: statuses[1]?.key ?? statuses[0]?.key ?? "", label: "", actors: ["assignee"], requires_comment: false }])
+    setTransitions((list) => [...list, { from: statuses[0]?.key ?? "", to: statuses[1]?.key ?? statuses[0]?.key ?? "", label: "", actors: ["assignee"], requires_comment: false, requires_attachment: false }])
 
   const statusLabel = (key: string) => statuses.find((status) => status.key === key)?.name || "(unnamed)"
 
@@ -219,6 +220,12 @@ export function WorkflowEditor({ projectId, statuses: serverStatuses, transition
                   )
                 })}
                 <div className="flex items-center gap-1.5 sm:ml-auto">
+                  <Checkbox id={`t${index}-file`} checked={!!transition.requires_attachment} onCheckedChange={(checked) => updateTransition(index, { requires_attachment: checked === true })} />
+                  <Label htmlFor={`t${index}-file`} className="text-xs font-normal">
+                    Attachment required
+                  </Label>
+                </div>
+                <div className="flex items-center gap-1.5">
                   <Checkbox id={`t${index}-comment`} checked={transition.requires_comment} onCheckedChange={(checked) => updateTransition(index, { requires_comment: checked === true })} />
                   <Label htmlFor={`t${index}-comment`} className="text-xs font-normal">
                     Comment required

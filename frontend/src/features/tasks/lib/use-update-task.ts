@@ -6,6 +6,7 @@ import type { Task } from "@/lib/types"
 export type TaskPatch = Partial<Pick<Task, "title" | "description" | "priority" | "start_date" | "due_date">> & {
   assignee_id?: number | null
   reviewer_id?: number | null
+  tag_ids?: number[]
 }
 
 /** PUT /tasks/{id} with only the changed fields. */

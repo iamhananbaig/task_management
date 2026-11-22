@@ -19,6 +19,8 @@ class StoreTaskRequest extends FormRequest
             'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
             'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],
             'start_date' => ['nullable', 'date_format:Y-m-d'],
+            'tag_ids' => ['nullable', 'array', 'max:20'],
+            'tag_ids.*' => ['integer'],
             'due_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ];
     }

@@ -10,8 +10,9 @@ namespace App\Support;
 class Permissions
 {
     public const GROUPS = [
-        'Projects' => ['view all projects', 'manage projects', 'manage workflow templates'],
+        'Projects' => ['view all projects', 'view restricted projects', 'manage projects', 'manage workflow templates', 'manage tags'],
         'Tasks' => ['create tasks', 'edit tasks', 'delete tasks', 'comment on tasks', 'override workflow'],
+        'Reports' => ['view reports'],
         'Administration' => ['view users', 'manage users', 'view roles', 'manage roles', 'view audit log'],
     ];
 
@@ -29,9 +30,9 @@ class Permissions
         return [
             'admin' => self::all(),
             'manager' => [
-                'view all projects', 'manage projects', 'manage workflow templates',
+                'view all projects', 'manage projects', 'manage workflow templates', 'manage tags',
                 'create tasks', 'edit tasks', 'delete tasks', 'comment on tasks', 'override workflow',
-                'view users', 'view audit log',
+                'view reports', 'view users', 'view audit log',
             ],
             'member' => ['create tasks', 'edit tasks', 'comment on tasks'],
             'viewer' => ['comment on tasks'],

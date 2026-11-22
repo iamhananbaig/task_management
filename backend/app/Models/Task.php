@@ -33,6 +33,7 @@ class Task extends Model
             'due_date' => 'date:Y-m-d',
             'completed_at' => 'datetime',
             'last_reminded_on' => 'date:Y-m-d',
+            'escalated_at' => 'datetime',
             'number' => 'integer',
             'position' => 'integer',
         ];
@@ -100,13 +101,25 @@ class Task extends Model
         return $this->belongsToMany(User::class, 'task_watchers')->withTimestamps();
     }
 
-    /** Tasks in projects the user may open. */
+    /** @return BelongsToMany<Tag, $this> */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class, 'task_tag');
+    }
+
+    /** @return BelongsTo<RoutineRun, $this> */
+    public function routineRun(): BelongsTo
+    {
+        return $this->belongsTo(RoutineRun::class);
+    }
+
+    /** Tasks in projects the user may open (see Project::scopeVisibleTo). */
     public function scopeVisibleTo(Builder $query, User $user): void
     {
-        if ($user->can('view all projects')) {
+        if ($user->can('view all projects') && $user->can('view restricted projects')) {
             return;
         }
-        $query->whereHas('project.members', fn (Builder $members) => $members->whereKey($user->id));
+        $query->whereHas('project', fn (Builder $project) => $project->visibleTo($user));
     }
 
     /** Not in a "done" status. */
