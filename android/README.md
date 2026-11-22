@@ -60,18 +60,11 @@ git push origin android-v1.1
 The app updates itself from those releases (`Updater.kt`): checks on start (at most every 6 hours)
 and from Me → Check for updates, downloads the APK, verifies size and SHA-256, opens the installer.
 
-**Signing key (one-time).** Create it outside the repo and back it up — updates signed with any other
-key can't be installed over the app:
-
-```bash
-mkdir -p ~/.android-keys
-keytool -genkeypair -v -keystore ~/.android-keys/tasks.jks -alias tasks -keyalg RSA -keysize 4096 -validity 36500
-printf 'storeFile=%s\nstorePassword=PASSWORD\nkeyAlias=tasks\nkeyPassword=PASSWORD\n' ~/.android-keys/tasks.jks > ~/.android-keys/tasks.properties
-chmod 600 ~/.android-keys/tasks.*
-```
-
-Then add two repository secrets: `ANDROID_KEYSTORE_BASE64` (`base64 -w0 ~/.android-keys/tasks.jks`)
-and `ANDROID_KEYSTORE_PASSWORD`. Local signed build: `./gradlew assembleRelease`.
+**Signing key.** `~/.android-keys/tasks.jks` (password in `~/.android-keys/tasks.properties`, both
+chmod 600), created 22-Nov-2026, SHA-256 `8a297c2c…41ae74e` (pinned in the release workflow). **Back
+both files up somewhere safe** — updates signed with any other key can't be installed over the app.
+GitHub has it as the repository secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`.
+Local signed build: `./gradlew assembleRelease`.
 
 ## Files
 

@@ -71,8 +71,10 @@ jobs:
           test -f "$APK" || { echo "::error::No signed APK was produced"; exit 1; }
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$APKSIGNER" verify --print-certs "$APK" | tee "$RUNNER_TEMP/cert.txt"
-          # Once the key exists, pin its SHA-256 fingerprint here (as mess_soft does) so a build signed
-          # with any other key fails instead of producing an APK that cannot update installed apps.
+          # Pinned: a build signed with any other key fails instead of producing an APK that
+          # cannot update the installed app (~/.android-keys/tasks.jks, created 22-Nov-2026).
+          EXPECTED=8a297c2c3b035aaccf8e0a1e119c15748ebfb3a60c8b001769cf1503b41ae74e
+          grep -q "SHA-256 digest: $EXPECTED" "$RUNNER_TEMP/cert.txt" || { echo "::error::APK is not signed with the Tasks release key"; exit 1; }
 
       - name: Publish release
         env:
