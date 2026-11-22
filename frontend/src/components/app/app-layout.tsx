@@ -23,6 +23,7 @@ import {
 import { ChangePasswordDialog, ChangePasswordScreen } from "@/components/app/change-password"
 import { GlobalSearch } from "@/components/app/global-search"
 import { NotificationBell } from "@/components/app/notification-bell"
+import { QuickAddTask } from "@/features/tasks/components/QuickAddTask"
 import { Button } from "@/components/ui/button"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSidebar } from "@/components/ui/sidebar-context";
@@ -235,6 +236,7 @@ function TopBar() {
       <div className="flex flex-1 justify-center px-2">
         <GlobalSearch />
       </div>
+      <QuickAddTask />
       <NotificationBell />
       <Button
         variant="ghost"

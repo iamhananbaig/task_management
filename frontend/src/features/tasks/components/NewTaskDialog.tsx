@@ -13,31 +13,49 @@ import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fieldErrors } from "@/lib/errors"
 import { priorities, priorityLabels } from "@/lib/labels"
-import { useMembers } from "@/lib/queries"
+import { useMembers, useProjects } from "@/lib/queries"
 import { toast } from "@/lib/toast"
 import type { Priority, Project, Task } from "@/lib/types"
 
 const empty = { title: "", description: "", priority: "medium" as Priority, assignee_id: "", reviewer_id: "", due_date: "" }
 
-/** New task in a project. It starts in the project's first status. */
+const LAST_PROJECT_KEY = "tasks.last-project"
+
+function lastProjectId(): number | null {
+  try {
+    return Number(localStorage.getItem(LAST_PROJECT_KEY)) || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * New task. It starts in the project's first status. Without a `project` (quick add from the top
+ * bar) the user picks one; the last project used is preselected.
+ */
 export function NewTaskDialog({
-  project,
+  project: fixedProject,
   open,
   onOpenChange,
   onCreated,
 }: {
-  project: Pick<Project, "id" | "name">
+  project?: Pick<Project, "id" | "name">
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (task: Task) => void
 }) {
   const { user } = useAuth()
-  const members = useMembers(open ? project.id : undefined)
+  const projects = useProjects()
+  const choices = (projects.data ?? []).filter((candidate) => candidate.can?.create_tasks)
+  const [pickedId, setPickedId] = React.useState<number | null>(lastProjectId)
+  const project = fixedProject ?? choices.find((candidate) => candidate.id === pickedId) ?? choices[0]
+  const members = useMembers(open && project ? project.id : undefined)
   const [form, setForm] = React.useState(empty)
   const set = <K extends keyof typeof empty>(key: K, value: (typeof empty)[K]) => setForm((current) => ({ ...current, [key]: value }))
 
   const create = useMutation({
     mutationFn: async (keepOpen: boolean) => {
+      if (!project) throw new Error("Choose a project.")
       const task = (
         await api.post<{ data: Task }>(`/projects/${project.id}/tasks`, {
           title: form.title.trim(),
@@ -51,6 +69,11 @@ export function NewTaskDialog({
       return { task, keepOpen }
     },
     onSuccess: ({ task, keepOpen }) => {
+      try {
+        localStorage.setItem(LAST_PROJECT_KEY, String(task.project.id))
+      } catch {
+        // private mode: just don't remember
+      }
       toast.success("Task created", `${task.reference} · ${task.title}`)
       // "Create and add another" keeps the people and priority for the next one
       setForm((current) => ({ ...empty, priority: current.priority, assignee_id: current.assignee_id, reviewer_id: current.reviewer_id }))
@@ -71,10 +94,32 @@ export function NewTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New task in {project.name}</DialogTitle>
+          <DialogTitle>{fixedProject ? `New task in ${fixedProject.name}` : "New task"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit}>
           <FieldGroup>
+            {!fixedProject && (
+              <Field>
+                <FieldLabel htmlFor="new-project">Project</FieldLabel>
+                <NativeSelect
+                  id="new-project"
+                  className="w-full"
+                  value={project ? String(project.id) : ""}
+                  onChange={(event) => {
+                    setPickedId(Number(event.target.value))
+                    // People belong to the project: pick them again
+                    setForm((current) => ({ ...current, assignee_id: "", reviewer_id: "" }))
+                  }}
+                >
+                  {choices.length === 0 && <NativeSelectOption value="">No project you can add tasks to</NativeSelectOption>}
+                  {choices.map((candidate) => (
+                    <NativeSelectOption key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            )}
             <Field data-invalid={!!errors.title || undefined}>
               <FieldLabel htmlFor="new-title">Title</FieldLabel>
               <Input id="new-title" autoFocus value={form.title} onChange={(event) => set("title", event.target.value)} required maxLength={255} />
@@ -126,10 +171,10 @@ export function NewTaskDialog({
             </div>
           </FieldGroup>
           <DialogFooter className="mt-5">
-            <Button type="button" variant="outline" disabled={create.isPending || !form.title.trim()} onClick={(event) => submit(event, true)}>
+            <Button type="button" variant="outline" disabled={create.isPending || !form.title.trim() || !project} onClick={(event) => submit(event, true)}>
               Create and add another
             </Button>
-            <Button type="submit" disabled={create.isPending || !form.title.trim()}>
+            <Button type="submit" disabled={create.isPending || !form.title.trim() || !project}>
               {create.isPending && <Spinner />} Create task
             </Button>
           </DialogFooter>

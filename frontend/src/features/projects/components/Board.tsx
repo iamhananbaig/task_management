@@ -22,6 +22,7 @@ import { PlusIcon } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { ColorDot } from "@/features/tasks/components/badges"
 import { MoveDialog } from "@/features/tasks/components/MoveDialog"
+import { needsMoveDialog } from "@/features/tasks/lib/move-rules"
 import { TaskCard } from "@/features/tasks/components/TaskCard"
 import { useMoveTask } from "@/features/tasks/lib/use-move"
 import { useOpenTask } from "@/features/tasks/lib/use-open-task"
@@ -115,11 +116,7 @@ export function Board({ statuses, tasks, onAdd }: { statuses: Status[]; tasks: T
       toast.warning("Move not allowed", `You can't move ${task.reference} from ${statusName(fromStatusId)} to ${statusName(toStatusId)}.`)
       return
     }
-    if (choices.every((choice) => choice.requires_attachment) && !task.attachments_count) {
-      toast.warning("Attachment needed", `Open ${task.reference} and attach the supporting document before “${choices[0].label}”.`)
-      return
-    }
-    if (choices.length === 1 && !choices[0].requires_comment) {
+    if (choices.length === 1 && !needsMoveDialog(task, choices[0])) {
       move.mutate({ task, transition: choices[0] })
       return
     }

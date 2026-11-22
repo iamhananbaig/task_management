@@ -8,7 +8,9 @@ import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,9 +22,17 @@ import org.json.JSONObject
 import java.io.File
 import java.time.LocalDate
 
-/** Everything about one task: workflow moves, people, dates, tags, checklist, files, comments. */
+/**
+ * Everything about one task. The status and the moves sit in a bar at the bottom, always in reach;
+ * the page is the work itself: details (folded into one line), description, checklist, files,
+ * comments. Moves that need a reason, evidence or a hand-over note open the move sheet.
+ */
 class TaskActivity : BaseActivity() {
-    companion object { const val ID = "task_id" }
+    companion object {
+        const val ID = "task_id"
+        /** Open the move sheet for this move once the task has loaded (from a list's quick action). */
+        const val MOVE = "move_id"
+    }
 
     private val currentTaskId by lazy { intent.getIntExtra(ID, 0) }
     private lateinit var content: LinearLayout
@@ -32,6 +42,12 @@ class TaskActivity : BaseActivity() {
     private var comments: List<JSONObject> = emptyList()
     private var tagGroups: List<JSONObject>? = null
     private var cameraFile: File? = null
+    private var pendingMove = 0
+    private val prefs by lazy { getSharedPreferences("ui", MODE_PRIVATE) }
+
+    // The open move sheet: its changing part is refilled whenever the task reloads (tick, upload)
+    private var moveSheetBody: LinearLayout? = null
+    private var moveSheetMove: Move? = null
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { upload(it) } }
     private val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
@@ -51,6 +67,7 @@ class TaskActivity : BaseActivity() {
             setOnRefreshListener { load(quiet = true) }
         }
         addTopAction(R.drawable.ic_more_vert, "Task actions") { task?.let { menu(it) } }
+        pendingMove = intent.getIntExtra(MOVE, 0)
         state.loading("Loading…")
         load()
     }
@@ -62,7 +79,12 @@ class TaskActivity : BaseActivity() {
             if (loaded.canUpdate && tagGroups == null) tagGroups = api.get("/tags").optJSONArray("data").objects()
             task = loaded
             render(loaded)
+            moveSheetMove?.let { fillMoveSheet(loaded, it) }
             state.hide()
+            if (pendingMove != 0) {
+                loaded.moves.firstOrNull { it.id == pendingMove }?.let { startMove(loaded, it) }
+                pendingMove = 0
+            }
         } catch (e: ApiException) {
             if (task == null && e.status != 401) state.error(e) { state.loading("Loading…"); load() } else throw e
         } finally {
@@ -98,7 +120,6 @@ class TaskActivity : BaseActivity() {
             }
         })
         content.addView(flow(this, buildList {
-            t.status?.let { add(colorPill(it.name, it.color)) }
             t.dueDate?.let { add(dueText(this@TaskActivity, it, t.isDone)) }
             t.run?.let { (id, name) ->
                 add(text(name, 13f, R.color.primary, bold = true).apply {
@@ -107,8 +128,8 @@ class TaskActivity : BaseActivity() {
             }
         }))
 
-        moves(t)
-        fields(t)
+        actionBar(t)
+        details(t)
         description(t)
         checklist(t)
         files(t)
@@ -124,41 +145,156 @@ class TaskActivity : BaseActivity() {
         setPadding(dp(4), dp(2), dp(4), dp(2))
     }
 
-    // ── Workflow moves ──
+    // ── Workflow moves: bottom bar + move sheet ──
 
-    private fun moves(t: Task) {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(16), 0, 0) }
-        content.addView(box)
+    /** Status on the left, the moves on the right (main move last); "More" when there are more than two. */
+    private fun actionBar(t: Task) {
+        val bar = findViewById<LinearLayout>(R.id.bottomBar)
+        bar.removeAllViews()
+        bar.visibility = View.VISIBLE
+        bar.gravity = Gravity.CENTER_VERTICAL
+        t.status?.let { bar.addView(colorPill(it.name, it.color), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(10) }) }
+
         if (t.moves.isEmpty()) {
-            box.addView(text("No moves available to you at this step.", 14f, R.color.muted))
+            val waiting = when {
+                t.isDone -> "Completed" + (t.completedAt?.let { " · ${Format.date(it)}" } ?: "")
+                t.status?.type == "review" -> "Waiting for ${t.reviewer?.name ?: "review"}"
+                else -> "Waiting for ${t.assignee?.name ?: "someone to pick it up"}"
+            }
+            bar.addView(text(waiting, 14f, R.color.muted).apply { maxLines = 2 }, lp(0, weight = 1f))
+            Fonts.apply(bar)
             return
         }
-        val hasFiles = t.attachments.isNotEmpty()
-        val backward = Regex("back|reopen|reject|return", RegexOption.IGNORE_CASE)
-        t.moves.forEach { move ->
-            val blocked = move.requiresAttachment && !hasFiles
-            val kind = if (backward.containsMatchIn(move.label)) ButtonKind.SECONDARY else ButtonKind.PRIMARY
-            box.addView(button(move.label, kind) { makeMove(t, move) }.apply { isEnabled = !blocked; alpha = if (blocked) 0.45f else 1f },
-                lp(height = dp(if (kind == ButtonKind.PRIMARY) 52 else 48)).apply { topMargin = dp(8) })
-            if (blocked) box.addView(text("Attach the supporting document (Files below) before “${move.label}”.", 13f, R.color.warning).apply { setPadding(0, dp(4), 0, 0) })
+
+        val ordered = t.moves.sortedBy { if (it.isBackward) 0 else 1 }
+        val shown = if (ordered.size > 2) listOf(ordered.last()) else ordered
+        if (ordered.size > 2) bar.addView(button("More", ButtonKind.SECONDARY) {
+            choose("Move ${t.reference}", ordered.dropLast(1).map { it.id.toString() to it.label }, null) { id ->
+                ordered.firstOrNull { it.id.toString() == id }?.let { startMove(t, it) }
+            }
+        }, lp(0, dp(48), 1f).apply { marginEnd = dp(8) })
+        shown.forEachIndexed { index, move ->
+            bar.addView(button(move.label, if (move.isBackward) ButtonKind.SECONDARY else ButtonKind.PRIMARY) { startMove(t, move) },
+                lp(0, dp(48), if (move.isBackward) 1f else 1.4f).apply { if (index > 0) marginStart = dp(8) })
         }
+        Fonts.apply(bar)
     }
 
-    private fun makeMove(t: Task, move: Move) {
-        fun send(comment: String?) = change("Not moved") {
-            api.post("/tasks/${t.id}/transitions/${move.id}", JSONObject().put("comment", comment ?: JSONObject.NULL))
-            toast(move.label)
+    private fun startMove(t: Task, move: Move) {
+        if (t.needsMoveSheet(move)) openMoveSheet(t, move) else sendMove(t, move, null)
+    }
+
+    private fun sendMove(t: Task, move: Move, comment: String?) = change("Not moved") {
+        api.post("/tasks/${t.id}/transitions/${move.id}", JSONObject().put("comment", comment ?: JSONObject.NULL))
+        toast("${move.label} ✓")
+    }
+
+    /** One step for a move: tick what's left on the checklist, attach evidence, leave a note — then move. */
+    private fun openMoveSheet(t: Task, move: Move) {
+        val sheet = Sheet(this).title(move.label, "${t.reference} · ${t.title}")
+        val dynamic = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        sheet.body.addView(dynamic)
+        sheet.body.addView(label(if (move.requiresComment) "Reason (required)" else "Note (optional)"))
+        val note = field(if (move.requiresComment) "What needs to change?" else "Anything the reviewer should know",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, 5000).apply {
+            minLines = 2
+            gravity = Gravity.TOP
         }
-        if (move.requiresComment) askText(move.label, "Reason", move.label, required = true, subtitle = "${t.reference} · ${t.title}") { send(it) }
-        else send(null)
+        sheet.body.addView(note)
+        sheet.button(move.label, if (move.isBackward) ButtonKind.SECONDARY else ButtonKind.PRIMARY, keepOpen = true) {
+            val current = task ?: t
+            val value = note.text.toString().trim()
+            when {
+                move.requiresComment && value.isEmpty() -> toast("Give a reason")
+                move.requiresAttachment && current.fileCount == 0 -> toast("Attach the supporting document first")
+                else -> { sheet.dismiss(); sendMove(current, move, value.ifEmpty { null }) }
+            }
+        }
+        sheet.button("Cancel", ButtonKind.SECONDARY)
+        sheet.onDismiss { moveSheetBody = null; moveSheetMove = null }
+        moveSheetBody = dynamic
+        moveSheetMove = move
+        fillMoveSheet(t, move)
+        Fonts.apply(sheet.body)
+        sheet.show()
+        if (move.requiresComment) note.requestFocus()
+    }
+
+    private fun fillMoveSheet(t: Task, move: Move) {
+        val box = moveSheetBody ?: return
+        box.removeAllViews()
+
+        val handingOver = move.toType == "review" || move.toType == "done"
+        val open = if (handingOver) t.checklist.filter { !it.done } else emptyList()
+        if (open.isNotEmpty()) {
+            val canTick = t.canUpdate || t.assignee?.id == session.userId
+            box.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundResource(R.drawable.card)
+                backgroundTintList = ColorStateList.valueOf(getColor(R.color.warning_soft))
+                setPadding(dp(14), dp(12), dp(14), dp(8))
+                addView(text("${open.size} checklist ${if (open.size == 1) "item is" else "items are"} not ticked", 15f, R.color.warning, bold = true))
+                open.forEach { item ->
+                    addView(CheckBox(context).apply {
+                        text = item.title
+                        textSize = 15f
+                        isEnabled = canTick
+                        minHeight = dp(44)
+                        buttonTintList = ColorStateList.valueOf(getColor(R.color.primary))
+                        setOnCheckedChangeListener { _, checked -> change { api.put("/checklist-items/${item.id}", JSONObject().put("is_done", checked)) } }
+                    })
+                }
+                if (canTick) addView(text("Tick them here, or go ahead if they don't apply.", 13f, R.color.muted))
+            }, lp().apply { bottomMargin = dp(4) })
+        }
+
+        if (move.requiresAttachment || move.toType == "review") {
+            box.addView(label("Supporting documents" + if (move.requiresAttachment) " (required)" else " (optional)"))
+            if (t.attachments.isEmpty()) {
+                box.addView(text(if (move.requiresAttachment) "Nothing attached yet." else "No files attached.", 14f, if (move.requiresAttachment) R.color.danger else R.color.muted))
+            } else {
+                t.attachments.forEach { file -> box.addView(iconText(this, R.drawable.ic_file, "${file.name}  ·  ${Format.size(file.size)}", R.color.text).apply { textSize = 14f; setPadding(0, dp(4), 0, dp(4)) }) }
+            }
+            if (t.canComment) box.addView(LinearLayout(this).apply {
+                addView(button("Take photo", ButtonKind.SECONDARY) { capturePhoto() }, lp(0, dp(46), 1f).apply { marginEnd = dp(6) })
+                addView(button("Attach file", ButtonKind.SECONDARY) { pickFile.launch(arrayOf("*/*")) }, lp(0, dp(46), 1f).apply { marginStart = dp(6) })
+            }, lp().apply { topMargin = dp(8) })
+        }
+        Fonts.apply(box)
     }
 
     // ── Fields ──
 
+    /** People, priority and tags in one tappable summary; tap to show (and edit) the full details. */
+    private fun details(t: Task) {
+        val open = prefs.getBoolean("details_open", false)
+        content.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.card)
+            foreground = getDrawable(R.drawable.ripple_row)
+            setPadding(dp(14), dp(12), dp(10), dp(12))
+            setOnClickListener {
+                prefs.edit().putBoolean("details_open", !open).apply()
+                render(t)
+            }
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(text((t.assignee?.name ?: "Unassigned") + (t.reviewer?.let { " → ${it.name}" } ?: ""), 15f, bold = true).apply { maxLines = 2 })
+                addView(text(listOf("${priorityLabel(t.priority)} priority") .plus(t.tags.map { it.name }).joinToString("  ·  "), 13f, R.color.muted).apply { setPadding(0, dp(2), 0, 0) })
+            }, lp(0, weight = 1f))
+            addView(text(if (open) "Hide" else if (t.canUpdate) "Edit" else "More", 13f, R.color.primary, bold = true))
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.ic_chevron_right)
+                rotation = if (open) 270f else 90f
+                imageTintList = ColorStateList.valueOf(getColor(R.color.primary))
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginStart = dp(2) })
+        }, lp().apply { topMargin = dp(14) })
+        if (open) fields(t)
+    }
+
     private fun fields(t: Task) {
-        section("Details")
         val box = card()
-        content.addView(box)
+        content.addView(box, lp().apply { topMargin = dp(6) })
         fun row(label: String, value: String, onTap: (() -> Unit)?) {
             box.addView(LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -262,9 +398,35 @@ class TaskActivity : BaseActivity() {
                 }
             }, lp().apply { marginStart = dp(4) })
         }
-        if (t.canUpdate) box.addView(menuRow(R.drawable.ic_add, "Add an item", color = R.color.primary) {
-            askText("Checklist item", "Item", "Add", required = true) { change { api.post("/tasks/${t.id}/checklist", JSONObject().put("title", it)) } }
-        })
+        if (t.canUpdate) box.addView(menuRow(R.drawable.ic_add, "Add items", color = R.color.primary) { addChecklistItems(t) })
+    }
+
+    /** A sheet that stays open: type an item, Add, type the next… Done when finished. */
+    private fun addChecklistItems(t: Task) {
+        val sheet = Sheet(this).title("Add checklist items", t.title)
+        val added = text("", 13f, R.color.success).apply { visibility = View.GONE }
+        val input = field("Item", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        sheet.body.addView(input)
+        sheet.body.addView(added, lp().apply { topMargin = dp(8) })
+        var count = 0
+        val add = {
+            val value = input.text.toString().trim()
+            if (value.isNotEmpty()) {
+                input.setText("")
+                change { api.post("/tasks/${t.id}/checklist", JSONObject().put("title", value)) }
+                count++
+                added.text = "Added $count: $value"
+                added.visibility = View.VISIBLE
+            }
+        }
+        input.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+        input.setOnEditorActionListener { _, _, _ -> add(); true }
+        sheet.button("Add", keepOpen = true) { add() }
+        sheet.button("Done", ButtonKind.SECONDARY)
+        Fonts.apply(sheet.body)
+        sheet.show()
+        input.requestFocus()
+        sheet.dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
     }
 
     // ── Files ──

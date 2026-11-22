@@ -98,5 +98,21 @@ it('summarises my work on the dashboard', function () {
         ->assertOk()
         ->assertJsonPath('counts.open', 2)
         ->assertJsonPath('counts.overdue', 1)
-        ->assertJsonCount(1, 'projects');
+        ->assertJsonCount(1, 'projects')
+        ->assertJsonPath('team', null);
+});
+
+it('shows managers their team: work by person and what waits for review', function () {
+    Task::factory()->create(['project_id' => $this->project->id, 'assignee_id' => $this->member->id, 'due_date' => today()->subDays(2)]);
+    $review = $this->project->statuses()->where('type', 'review')->first();
+    Task::factory()->create(['project_id' => $this->project->id, 'assignee_id' => $this->member->id, 'reviewer_id' => $this->manager->id, 'status_id' => $review->id]);
+    Task::factory()->create(['project_id' => $this->project->id, 'assignee_id' => null]);
+    $this->signIn($this->manager);
+
+    $team = $this->getJson('/api/v1/dashboard')->assertOk()->json('team');
+
+    expect($team['counts'])->toBe(['open' => 4, 'overdue' => 1, 'in_review' => 1, 'unassigned' => 1])
+        ->and($team['people'])->toBe([['user' => ['id' => $this->member->id, 'name' => $this->member->name], 'open' => 3, 'overdue' => 1, 'in_review' => 1]])
+        ->and($team['waiting_review'])->toHaveCount(1)
+        ->and(collect($team['waiting_review'][0]['available_transitions'])->pluck('label')->all())->toContain('Approve', 'Send back');
 });

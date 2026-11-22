@@ -29,7 +29,7 @@ export function useShortcut(key: string, onPress: () => void, enabled = true) {
         event.metaKey ||
         event.altKey ||
         typing(event) ||
-        document.querySelector('[role="dialog"]')
+        document.querySelector('[role="dialog"]:not([data-slot="toast"]), [role="alertdialog"]:not([data-slot="toast"])')
       ) {
         return
       }

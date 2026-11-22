@@ -277,6 +277,27 @@ abstract class BaseActivity : ScreenActivity() {
     }
 
     protected fun openTask(id: Int) = startActivity(Intent(this, TaskActivity::class.java).putExtra(TaskActivity.ID, id))
+
+    /**
+     * A move from a list (card button or swipe). Simple moves happen at once; moves that need a
+     * reason, evidence or a hand-over note open the task with its move sheet.
+     */
+    protected fun quickMove(task: Task, move: Move, afterMove: () -> Unit) {
+        if (task.needsMoveSheet(move)) {
+            startActivity(Intent(this, TaskActivity::class.java).putExtra(TaskActivity.ID, task.id).putExtra(TaskActivity.MOVE, move.id))
+            return
+        }
+        call("Not moved") {
+            api.post("/tasks/${task.id}/transitions/${move.id}", org.json.JSONObject().put("comment", org.json.JSONObject.NULL))
+            AppState.dirty = true
+            toast("${task.reference}: ${move.label} ✓")
+            afterMove()
+        }
+    }
+
+    /** New task: in [projectId], or (0) the user picks the project on the form. */
+    protected fun newTask(projectId: Int = 0) =
+        startActivity(Intent(this, NewTaskActivity::class.java).putExtra(NewTaskActivity.PROJECT_ID, projectId))
 }
 
 // ── Colour helpers (status / tag / project swatches) ──

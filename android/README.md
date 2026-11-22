@@ -7,12 +7,15 @@ It talks to the same `/api/v1` as the web app (no backend changes).
 | Screen | What it does |
 |---|---|
 | Sign in | Email, password, server address (the web app's address); new accounts set their own password first |
-| My tasks | Assigned to me (All / Overdue / Today / Next 7 days / No date) or To review; open / overdue / to-review counts |
-| Projects → project | Tasks grouped by status; Everyone / Mine / Unassigned; **+** new task |
-| Task | Workflow buttons (comment / attachment rules applied), assignee, reviewer, priority, due date, tags, description, checklist (long-press to remove), files (take photo, attach file, tap to open, long-press to remove), comments; ⋯ watch, email reminder, move to bin |
+| My tasks | Assigned to me, grouped Overdue / Today / Next 7 days / Later / No date (or one filter), or To review. Each card has its next move as a button (Start, Submit for review, Approve); **swipe a card right** for the same. Search (🔍), **+** for a new task (pick the project; the last one is remembered) |
+| Projects → project | Tasks grouped by status; Everyone / Mine / Unassigned; search; **+** new task |
+| Task | Status and moves in a bar at the bottom, always in reach. People / priority / tags folded into one line (tap to edit). Description, checklist (add several items in a row; long-press to remove), files (take photo, attach file, tap to open, long-press to remove), comments; ⋯ watch, email reminder, move to bin |
+| Move sheet | Opens for Submit for review, moves that need a reason or a document, and finishing with open checklist items: tick the remaining items, attach evidence and add a note in one place |
 | Period | A routine run (e.g. *November 2026 · Month-end close*): progress and its tasks |
-| Alerts | Notifications with unread badge; tap opens the task / period; ✓ marks all read |
+| Alerts | Notifications grouped by day, unread highlighted; tap opens the task / period and marks it read; ✓ marks all read |
 | Me | Profile, change password, check for updates, sign out |
+
+Lists keep what they last loaded when the phone is offline and say so in a banner.
 
 **Phone notifications:** a background check (WorkManager, about every 15 minutes — Android's
 minimum) shows new alerts as notifications; tapping one opens the task. Instant push would need

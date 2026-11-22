@@ -5,7 +5,7 @@ import { ErrorAlert, Loading } from "@/components/app/shared"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { TaskList } from "@/features/projects/components/TaskList"
+import { TaskRows } from "@/features/tasks/components/TaskRows"
 import { TaskSheet } from "@/features/tasks/components/TaskSheet"
 import { useTasks, type TaskFilters } from "@/lib/queries"
 import { cn } from "@/lib/utils"
@@ -75,7 +75,23 @@ export default function MyTasksPage() {
 
       <div className="mt-4">
         <ErrorAlert error={tasks.error} />
-        {tasks.isLoading ? <Loading /> : <TaskList tasks={tasks.data?.data ?? []} emptyMessage={tab === "review" ? "Nothing is waiting for your review." : "No tasks here."} />}
+        {tasks.isLoading ? (
+          <Loading />
+        ) : tab === "review" ? (
+          <TaskRows
+            tasks={tasks.data?.data ?? []}
+            showAssignee
+            emptyTitle="Nothing to review"
+            emptyMessage="Tasks submitted to you for review show up here, with Approve and Send back."
+          />
+        ) : (
+          <TaskRows
+            tasks={tasks.data?.data ?? []}
+            grouped={!due}
+            emptyTitle={due ? "No tasks match" : "You're all caught up"}
+            emptyMessage={due ? "Try another filter." : "No open tasks are assigned to you."}
+          />
+        )}
       </div>
       <TaskSheet />
     </>

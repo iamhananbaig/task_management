@@ -10,11 +10,16 @@ import android.widget.TextView
 import org.json.JSONObject
 import java.time.LocalDate
 
-/** New task in a project. It starts in the project's first status. */
+/**
+ * New task. It starts in the project's first status. Opened from a project it goes there; from
+ * My tasks (no project) the user picks one, the last project used first.
+ */
 class NewTaskActivity : BaseActivity() {
     companion object { const val PROJECT_ID = "project_id" }
 
-    private val projectId by lazy { intent.getIntExtra(PROJECT_ID, 0) }
+    private var projectId = 0
+    private var projects: List<Project> = emptyList()
+    private val prefs by lazy { getSharedPreferences("ui", MODE_PRIVATE) }
     private var members: List<Person> = emptyList()
     private var assignee: Int? = null
     private var reviewer: Int? = null
@@ -28,6 +33,19 @@ class NewTaskActivity : BaseActivity() {
         topBar("New task")
         findViewById<View>(R.id.refresh).isEnabled = false
         val content = findViewById<LinearLayout>(R.id.content)
+        projectId = intent.getIntExtra(PROJECT_ID, 0)
+        val pickProject = projectId == 0
+        lateinit var projectView: TextView
+        if (pickProject) {
+            content.addView(label("Project"))
+            projectView = text("…", 17f).apply {
+                setBackgroundResource(R.drawable.field)
+                minHeight = dp(52)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(14), 0, dp(14), 0)
+            }
+            content.addView(projectView, lp())
+        }
 
         val title = field("What needs doing?", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
         val description = field("Details (optional)", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, 20000).apply { minLines = 3; gravity = android.view.Gravity.TOP }
@@ -63,13 +81,33 @@ class NewTaskActivity : BaseActivity() {
             }.show()
         }
 
-        call("Couldn't load the project") {
-            val project = Project.from(api.get("/projects/$projectId").getJSONObject("data"))
-            topSummary(project.name)
+        fun loadProject(id: Int): Unit = call("Couldn't load the project") {
+            val project = Project.from(api.get("/projects/$id").getJSONObject("data"))
+            projectId = id
+            if (pickProject) projectView.text = project.name else topSummary(project.name)
             members = project.members
-            // Assign to yourself by default when you're a member
+            // Assign to yourself by default when you're a member; reviewer is per project
             assignee = members.firstOrNull { it.id == session.userId }?.id
+            reviewer = null
             assigneeView.text = nameOf(assignee)
+            reviewerView.text = "Nobody"
+        }
+
+        if (pickProject) {
+            projectView.setOnClickListener {
+                choose("Project", projects.map { it.id.toString() to it.name }, projectId.toString()) { loadProject(it.toInt()) }
+            }
+            call("Couldn't load projects") {
+                projects = api.get("/projects").optJSONArray("data").objects().map { Project.from(it) }.filter { it.canCreateTasks }
+                if (projects.isEmpty()) {
+                    showError("No project", "You can't add tasks to any project yet. Ask a manager to add you to one.")
+                    return@call
+                }
+                val last = prefs.getInt("last_project", 0)
+                loadProject((projects.firstOrNull { it.id == last } ?: projects.first()).id)
+            }
+        } else {
+            loadProject(projectId)
         }
 
         findViewById<View>(R.id.bottomBar).visibility = View.VISIBLE
@@ -78,6 +116,7 @@ class NewTaskActivity : BaseActivity() {
         create.setOnClickListener {
             val name = title.text.toString().trim()
             if (name.isEmpty()) return@setOnClickListener toast("Enter a title")
+            if (projectId == 0) return@setOnClickListener toast("Choose a project")
             hideKeyboard()
             create.isEnabled = false
             call("Task not created") {
@@ -90,6 +129,7 @@ class NewTaskActivity : BaseActivity() {
                         .put("reviewer_id", reviewer ?: JSONObject.NULL)
                         .put("due_date", due ?: JSONObject.NULL))
                     AppState.dirty = true
+                    prefs.edit().putInt("last_project", projectId).apply()
                     openTask(res.getJSONObject("data").getInt("id"))
                     finish()
                 } finally {

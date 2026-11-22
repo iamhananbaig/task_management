@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { api } from "@/lib/api"
+import { useTickChecklist } from "@/features/tasks/lib/use-checklist"
+import { api, apiErrorMessage } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { useAuth } from "@/lib/auth"
 import type { Task } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -19,13 +21,16 @@ export function Checklist({ task }: { task: Task }) {
   const canTick = canEdit || task.assignee?.id === user?.id
   const [title, setTitle] = React.useState("")
 
+  // Cleared at once so several items can be typed in a row (Enter after each)
   const add = useMutation({
     mutationFn: async (value: string) => api.post(`/tasks/${task.id}/checklist`, { title: value }),
-    onSuccess: () => setTitle(""),
+    onMutate: () => setTitle(""),
+    onError: (error, value) => {
+      setTitle(value)
+      toast.error(apiErrorMessage(error))
+    },
   })
-  const tick = useMutation({
-    mutationFn: async ({ id, is_done }: { id: number; is_done: boolean }) => api.put(`/checklist-items/${id}`, { is_done }),
-  })
+  const tick = useTickChecklist(task.id)
   const remove = useMutation({ mutationFn: async (id: number) => api.delete(`/checklist-items/${id}`) })
 
   const done = items.filter((item) => item.is_done).length
@@ -75,7 +80,7 @@ export function Checklist({ task }: { task: Task }) {
           }}
         >
           <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Add an item" aria-label="New checklist item" />
-          <Button type="submit" variant="outline" disabled={!title.trim() || add.isPending}>
+          <Button type="submit" variant="outline" disabled={!title.trim()}>
             <PlusIcon /> Add
           </Button>
         </form>

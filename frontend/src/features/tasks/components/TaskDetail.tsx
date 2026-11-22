@@ -2,7 +2,9 @@ import * as React from "react"
 import { useMutation } from "@tanstack/react-query"
 import { Link, useNavigate } from "react-router-dom"
 import {
+  ArrowRightIcon,
   ArrowSquareOutIcon,
+  CaretDownIcon,
   BellRingingIcon,
   BellSlashIcon,
   DotsThreeIcon,
@@ -34,19 +36,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Activity } from "@/features/tasks/components/Activity"
 import { Attachments } from "@/features/tasks/components/Attachments"
-import { ColorDot, DueDate, StatusBadge } from "@/features/tasks/components/badges"
+import { ColorDot, DueDate, PriorityMark, StatusBadge, UserName } from "@/features/tasks/components/badges"
 import { Checklist } from "@/features/tasks/components/Checklist"
 import { Comments } from "@/features/tasks/components/Comments"
 import { EmailReminderDialog } from "@/features/tasks/components/EmailReminderDialog"
 import { TaskFields } from "@/features/tasks/components/TaskFields"
-import { TaskTags } from "@/features/tasks/components/TaskTags"
+import { TagChips, TaskTags } from "@/features/tasks/components/TaskTags"
 import { TransitionButtons } from "@/features/tasks/components/TransitionButtons"
+import { fileCount } from "@/features/tasks/lib/move-rules"
 import { useUpdateTask } from "@/features/tasks/lib/use-update-task"
 import { api } from "@/lib/api"
 import { useTask } from "@/lib/queries"
 import { toast } from "@/lib/toast"
 import type { Task } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { cn, formatDate } from "@/lib/utils"
 
 /** Everything about one task. Used in the board's side sheet and on /tasks/:id. */
 export function TaskDetail({ taskId, inSheet, onDeleted }: { taskId: number; inSheet?: boolean; onDeleted?: () => void }) {
@@ -81,7 +84,6 @@ function TaskDetailBody({ task, inSheet, onDeleted }: { task: Task; inSheet?: bo
         </div>
         <EditableTitle task={task} />
         <div className="flex flex-wrap items-center gap-3">
-          <StatusBadge status={task.status} />
           <DueDate date={task.due_date} done={task.status?.type === "done"} />
           {task.completed_at && <span className="text-xs text-muted-foreground">Completed {new Date(task.completed_at).toLocaleDateString()}</span>}
           {task.routine_run && (
@@ -92,29 +94,99 @@ function TaskDetailBody({ task, inSheet, onDeleted }: { task: Task; inSheet?: bo
         </div>
       </header>
 
-      <TransitionButtons task={task} />
-      <TaskFields task={task} />
-      <TaskTags task={task} />
+      {/* Status and the moves stay in view while scrolling through checklist, files and comments */}
+      <div
+        className={cn(
+          "sticky z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background py-2.5",
+          // The sheet scrolls itself (padding p-4 / sm:p-6); a page scrolls under the 3rem top bar
+          inSheet ? "-top-4 -mx-4 px-4 sm:-top-6 sm:-mx-6 sm:px-6" : "top-12",
+        )}
+      >
+        <StatusBadge status={task.status} />
+        <TransitionButtons task={task} className="ml-auto justify-end" emptyText={task.status?.type === "done" ? null : "Waiting for someone else"} />
+      </div>
+
+      <TaskDetails task={task} />
       <EditableDescription task={task} />
       <Checklist task={task} />
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">
+          Files {fileCount(task) > 0 && <span className="font-normal text-muted-foreground">({fileCount(task)})</span>}
+        </h3>
+        <Attachments task={task} />
+      </section>
 
       <Tabs defaultValue="comments">
         <TabsList>
           <TabsTrigger value="comments">Comments{task.comments_count ? ` (${task.comments_count})` : ""}</TabsTrigger>
-          <TabsTrigger value="files">Files{task.attachments?.length ? ` (${task.attachments.length})` : ""}</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="comments" className="pt-3">
           <Comments task={task} />
-        </TabsContent>
-        <TabsContent value="files" className="pt-3">
-          <Attachments task={task} />
         </TabsContent>
         <TabsContent value="activity" className="pt-3">
           <Activity taskId={task.id} />
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+const DETAILS_KEY = "tasks.details-open"
+
+/**
+ * People, priority, dates and tags as one readable line; opens into the editable fields. Stays
+ * open or closed as the user last left it.
+ */
+function TaskDetails({ task }: { task: Task }) {
+  const [open, setOpen] = React.useState(() => {
+    try {
+      return localStorage.getItem(DETAILS_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
+  const toggle = () => {
+    setOpen(!open)
+    try {
+      localStorage.setItem(DETAILS_KEY, open ? "0" : "1")
+    } catch {
+      // private mode: just don't remember
+    }
+  }
+
+  return (
+    <section className="rounded-lg border">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-muted/50"
+      >
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <UserName user={task.assignee} />
+          {task.reviewer && (
+            <>
+              <ArrowRightIcon className="size-3 text-muted-foreground" aria-label="reviewed by" />
+              <span className="text-muted-foreground">{task.reviewer.name}</span>
+            </>
+          )}
+          <span className="text-muted-foreground">·</span>
+          <PriorityMark priority={task.priority} showLabel />
+          {task.start_date && <span className="text-muted-foreground">· Starts {formatDate(task.start_date)}</span>}
+          <TagChips tags={task.tags} />
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">{open ? "Hide" : task.can?.update ? "Edit" : "Details"}</span>
+        <CaretDownIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="flex flex-col gap-4 border-t px-3 py-3">
+          <TaskFields task={task} />
+          <TaskTags task={task} />
+        </div>
+      )}
+    </section>
   )
 }
 

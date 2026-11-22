@@ -8,11 +8,13 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -35,6 +37,14 @@ class MainActivity : BaseActivity() {
     // My tasks filters
     private var reviewMode = false
     private var due = ""
+
+    // Last loaded data per tab, filtered locally by the search box
+    private var tasks: List<Task> = emptyList()
+    private var projects: List<Project> = emptyList()
+    private var alerts: List<Alert> = emptyList()
+    private var query = ""
+    /** Whether the user may add tasks anywhere (shows the "+" button); loaded once. */
+    private var canCreate: Boolean? = null
 
     private lateinit var page: FrameLayout
     private var list: ListPage? = null
@@ -114,8 +124,11 @@ class MainActivity : BaseActivity() {
                 val view = layoutInflater.inflate(R.layout.page_list, page, false)
                 page.addView(view)
                 list = ListPage(view)
+                query = ""
                 if (next == Tab.ALERTS) addTopAction(R.drawable.ic_check, "Mark all read") { markAllRead() }
+                if (next == Tab.MY_TASKS || next == Tab.PROJECTS) addTopAction(R.drawable.ic_search, "Search") { toggleSearch() }
                 if (next == Tab.MY_TASKS) buildTaskFilters()
+                list?.fab?.visibility = if (canCreate == true && next != Tab.ALERTS) View.VISIBLE else View.GONE
                 list?.state?.loading("Loading…")
                 load()
             }
@@ -135,14 +148,24 @@ class MainActivity : BaseActivity() {
             onTask = { openTask(it.id) },
             onProject = { startActivity(Intent(this@MainActivity, ProjectActivity::class.java).putExtra(ProjectActivity.ID, it.id)) },
             onAlert = { openAlert(it) },
+            onMove = { task, move -> quickMove(task, move) { load(quiet = true) } },
         )
         val state = StateView(root)
+        val search: EditText = root.findViewById(R.id.search)
+        val offline: TextView = root.findViewById(R.id.offline)
+        val fab: View = root.findViewById(R.id.fab)
 
         init {
             root.findViewById<RecyclerView>(R.id.list).apply {
                 layoutManager = LinearLayoutManager(this@MainActivity)
                 adapter = this@ListPage.adapter
+                swipeToMove(this@ListPage.adapter) { task, move -> quickMove(task, move) { load(quiet = true) } }
             }
+            search.doAfterTextChanged {
+                query = it?.toString().orEmpty().trim()
+                showRows()
+            }
+            fab.setOnClickListener { newTask() }
         }
     }
 
@@ -167,49 +190,112 @@ class MainActivity : BaseActivity() {
         val page = list ?: return
         call("Couldn't load", busyLine = quiet) {
             try {
-                val rows: List<Row> = coroutineScope {
+                coroutineScope {
                     val unread = async { api.get("/notifications", mapOf("unread" to true)).optInt("unread") }
-                    val rows = when (current) {
-                        Tab.MY_TASKS -> loadMyTasks()
-                        Tab.PROJECTS -> api.get("/projects").optJSONArray("data").objects().map { Row.ProjectItem(Project.from(it)) }
-                        Tab.ALERTS -> api.get("/notifications").optJSONArray("data").objects().map { Row.AlertItem(Alert.from(it)) }
-                        Tab.ME -> emptyList()
+                    val creatable = if (canCreate == null && current != Tab.PROJECTS) async {
+                        api.get("/projects").optJSONArray("data").objects().any { Project.from(it).canCreateTasks }
+                    } else null
+                    when (current) {
+                        Tab.MY_TASKS -> tasks = loadMyTasks()
+                        Tab.PROJECTS -> projects = api.get("/projects").optJSONArray("data").objects().map { Project.from(it) }
+                            .also { all -> canCreate = all.any { it.canCreateTasks } }
+                        Tab.ALERTS -> alerts = api.get("/notifications").optJSONArray("data").objects().map { Alert.from(it) }
+                        Tab.ME -> Unit
                     }
+                    creatable?.let { canCreate = it.await() }
                     setAlertBadge(unread.await())
-                    rows
                 }
                 if (tab != current) return@call
-                page.adapter.rows = rows
-                if (rows.isEmpty()) page.state.empty(when (current) {
-                    Tab.MY_TASKS -> R.drawable.ic_checklist
-                    Tab.PROJECTS -> R.drawable.ic_folder
-                    else -> R.drawable.ic_notifications
-                }, when (current) {
-                    Tab.MY_TASKS -> if (reviewMode) "Nothing to review" else "No tasks here"
-                    Tab.PROJECTS -> "No projects"
-                    else -> "You're all caught up"
-                }, when (current) {
-                    Tab.MY_TASKS -> if (reviewMode) "Tasks submitted to you for review appear here." else null
-                    Tab.PROJECTS -> "Ask a manager to add you to a project."
-                    else -> null
-                }) else page.state.hide()
+                page.offline.visibility = View.GONE
+                page.fab.visibility = if (canCreate == true && current != Tab.ALERTS) View.VISIBLE else View.GONE
+                showRows()
             } catch (e: ApiException) {
-                if (page.adapter.rows.isEmpty() && e.status != 401) page.state.error(e) { page.state.loading("Loading…"); load() } else throw e
+                when {
+                    e.status == 401 -> throw e
+                    page.adapter.rows.isEmpty() -> page.state.error(e) { page.state.loading("Loading…"); load() }
+                    // Keep showing what was loaded; say so instead of a pop-up
+                    e.status == 0 -> page.offline.apply {
+                        text = "Offline — showing what was loaded earlier. Pull down to try again."
+                        visibility = View.VISIBLE
+                    }
+                    else -> throw e
+                }
             } finally {
                 page.refresh.isRefreshing = false
             }
         }
     }
 
-    private suspend fun loadMyTasks(): List<Row> = coroutineScope {
+    /** Builds the current tab's rows from the loaded data and the search text. */
+    private fun showRows() {
+        val page = list ?: return
+        val q = query.lowercase()
+        fun matches(vararg fields: String?) = q.isEmpty() || fields.any { it?.lowercase()?.contains(q) == true }
+
+        val rows: List<Row> = when (tab) {
+            Tab.MY_TASKS -> {
+                val shown = tasks.filter { matches(it.title, it.reference, it.projectName) }
+                when {
+                    reviewMode -> shown.map { Row.TaskItem(it, showProject = true, showAssignee = true) }
+                    due.isEmpty() -> groupByDue(shown)
+                    else -> shown.map { Row.TaskItem(it, showProject = true, showAssignee = false) }
+                }
+            }
+            Tab.PROJECTS -> projects.filter { matches(it.name, it.key) }.map { Row.ProjectItem(it) }
+            Tab.ALERTS -> alerts.groupBy { dayGroup(it.createdAt) }.flatMap { (label, items) -> listOf(Row.Header(label)) + items.map { Row.AlertItem(it) } }
+            Tab.ME -> emptyList()
+        }
+        page.adapter.rows = rows
+        if (rows.isNotEmpty()) return page.state.hide()
+
+        when {
+            query.isNotEmpty() -> page.state.empty(R.drawable.ic_search, "No matches", "Nothing matches “$query”.")
+            tab == Tab.MY_TASKS && reviewMode -> page.state.empty(R.drawable.ic_checklist, "Nothing to review", "Tasks submitted to you for review appear here, with Approve and Send back.")
+            tab == Tab.MY_TASKS && due.isNotEmpty() -> page.state.empty(R.drawable.ic_checklist, "No tasks match", "Try another filter.", "Show all") { due = ""; buildTaskFilters(); load() }
+            tab == Tab.MY_TASKS -> page.state.empty(R.drawable.ic_check_circle, "You're all caught up", "No open tasks are assigned to you.",
+                if (canCreate == true) "New task" else null) { newTask() }
+            tab == Tab.PROJECTS -> page.state.empty(R.drawable.ic_folder, "No projects", "Ask a manager to add you to a project.")
+            else -> page.state.empty(R.drawable.ic_notifications, "You're all caught up", null)
+        }
+    }
+
+    /** "Today", "Yesterday", "Earlier this week", "Older" (by the phone's date). */
+    private fun dayGroup(iso: String): String {
+        val day = runCatching { java.time.OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDate() }.getOrNull()
+            ?: return "Older"
+        val days = java.time.temporal.ChronoUnit.DAYS.between(day, java.time.LocalDate.now())
+        return when {
+            days <= 0 -> "Today"
+            days == 1L -> "Yesterday"
+            days < 7 -> "Earlier this week"
+            else -> "Older"
+        }
+    }
+
+    private fun toggleSearch() {
+        val page = list ?: return
+        val search = page.search
+        if (search.visibility == View.VISIBLE) {
+            search.setText("")
+            search.visibility = View.GONE
+            hideKeyboard()
+        } else {
+            search.hint = if (tab == Tab.PROJECTS) "Search projects" else "Search tasks"
+            search.visibility = View.VISIBLE
+            search.requestFocus()
+            getSystemService(android.view.inputmethod.InputMethodManager::class.java).showSoftInput(search, 0)
+        }
+    }
+
+    private suspend fun loadMyTasks(): List<Task> = coroutineScope {
         val dashboard = async { api.get("/dashboard").optJSONObject("counts") }
         val query = if (reviewMode) mapOf("reviewer" to "me", "status_type" to "review", "per_page" to 200)
             else mapOf("assignee" to "me", "due" to due, "sort" to "due_date", "per_page" to 200)
-        val tasks = api.get("/tasks", query).optJSONArray("data").objects().map { Task.from(it) }
+        val loaded = api.get("/tasks", query).optJSONArray("data").objects().map { Task.from(it) }
         dashboard.await()?.let { c ->
             topSummary("${c.optInt("open")} open · ${c.optInt("overdue")} overdue · ${c.optInt("to_review")} to review")
         }
-        tasks.map { Row.TaskItem(it, showProject = true) }
+        loaded
     }
 
     private fun setAlertBadge(count: Int) {

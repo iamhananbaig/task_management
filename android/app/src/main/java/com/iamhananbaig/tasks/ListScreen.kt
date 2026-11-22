@@ -12,7 +12,7 @@ abstract class ListScreen : BaseActivity() {
     protected lateinit var filters: LinearLayout
     protected lateinit var refresh: SwipeRefreshLayout
     protected lateinit var state: StateView
-    protected val adapter = RowAdapter(onTask = { openTask(it.id) })
+    protected val adapter = RowAdapter(onTask = { openTask(it.id) }, onMove = { task, move -> quickMove(task, move) { reload(quiet = true) } })
     private var loadedOnce = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,6 +28,7 @@ abstract class ListScreen : BaseActivity() {
         findViewById<RecyclerView>(R.id.list).apply {
             layoutManager = LinearLayoutManager(this@ListScreen)
             adapter = this@ListScreen.adapter
+            swipeToMove(this@ListScreen.adapter) { task, move -> quickMove(task, move) { reload(quiet = true) } }
         }
         setUp()
         state.loading("Loading…")
@@ -40,6 +41,13 @@ abstract class ListScreen : BaseActivity() {
     }
 
     protected fun showFilters() { findViewById<View>(R.id.filtersScroll).visibility = View.VISIBLE }
+
+    /** The round "+" button over the list. */
+    protected fun showFab(description: String, onClick: () -> Unit) = findViewById<View>(R.id.fab).apply {
+        visibility = View.VISIBLE
+        contentDescription = description
+        setOnClickListener { onClick() }
+    }
 
     /** Top bar, filters. Called once before the first load. */
     protected abstract fun setUp()

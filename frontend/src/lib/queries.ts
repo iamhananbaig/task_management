@@ -129,6 +129,12 @@ export type Dashboard = {
   }
   projects: Project[]
   activity: AuditEntry[]
+  /** Managers only: their projects' work by person and what waits for review */
+  team: {
+    counts: { open: number; overdue: number; in_review: number; unassigned: number }
+    people: { user: { id: number; name: string }; open: number; overdue: number; in_review: number }[]
+    waiting_review: Task[]
+  } | null
 }
 
 export const useDashboard = () =>

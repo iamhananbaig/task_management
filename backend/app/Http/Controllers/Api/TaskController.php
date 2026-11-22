@@ -58,7 +58,7 @@ class TaskController extends Controller
     public function forProject(Request $request, Project $project): AnonymousResourceCollection
     {
         Gate::authorize('view', $project);
-        $project->load(['transitions', 'members:id', 'statuses']);
+        $project->load(['transitions.toStatus:id,type', 'members:id', 'statuses']);
         $doneIds = $project->statuses->filter->isDone()->pluck('id');
 
         $query = Task::where('project_id', $project->id)
@@ -216,14 +216,14 @@ class TaskController extends Controller
      */
     private function attachProjects($tasks): void
     {
-        $projects = Project::with(['transitions', 'members:id'])->findMany($tasks->pluck('project_id')->unique())->keyBy('id');
+        $projects = Project::with(['transitions.toStatus:id,type', 'members:id'])->findMany($tasks->pluck('project_id')->unique())->keyBy('id');
         $tasks->each(fn (Task $task) => $task->setRelation('project', $projects[$task->project_id]));
     }
 
     private function loadDetail(Task $task): Task
     {
         return $task->load([
-            'project.transitions', 'project.members:id', 'status',
+            'project.transitions.toStatus:id,type', 'project.members:id', 'status',
             'assignee:id,name,email', 'reviewer:id,name,email', 'creator:id,name,email',
             'checklist', 'attachments.user:id,name,email', 'watchers:id,name,email', 'tags', 'routineRun:id,name',
         ])->loadCount(self::listCounts());

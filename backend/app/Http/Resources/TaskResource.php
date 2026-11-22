@@ -73,6 +73,8 @@ class TaskResource extends JsonResource
                         'id' => $transition->id,
                         'label' => $transition->label,
                         'to_status_id' => $transition->to_status_id,
+                        // Lets the apps ask for evidence / warn about open checklist items before review or done
+                        'to_type' => $transition->relationLoaded('toStatus') ? $transition->toStatus?->type : null,
                         'requires_comment' => $transition->requires_comment,
                         'requires_attachment' => $transition->requires_attachment,
                     ])->values(),

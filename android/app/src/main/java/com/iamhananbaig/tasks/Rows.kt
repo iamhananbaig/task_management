@@ -15,7 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 /** What a list shows: section headers, task cards, project cards, alerts, a run card. */
 sealed class Row {
     data class Header(val title: String, val count: Int? = null, val color: String? = null) : Row()
-    data class TaskItem(val task: Task, val showProject: Boolean) : Row()
+    data class TaskItem(val task: Task, val showProject: Boolean, val showAssignee: Boolean = true) : Row()
     data class ProjectItem(val project: Project) : Row()
     data class AlertItem(val alert: Alert) : Row()
     data class Note(val text: String) : Row()
@@ -26,6 +26,8 @@ class RowAdapter(
     private val onTask: (Task) -> Unit = {},
     private val onProject: (Project) -> Unit = {},
     private val onAlert: (Alert) -> Unit = {},
+    /** The card's one-tap move button (its main forward move); null hides the button. */
+    private val onMove: ((Task, Move) -> Unit)? = null,
 ) : RecyclerView.Adapter<RowAdapter.Holder>() {
     var rows: List<Row> = emptyList()
         set(value) { field = value; notifyDataSetChanged() }
@@ -44,7 +46,7 @@ class RowAdapter(
         frame.removeAllViews()
         val view = when (val row = rows[position]) {
             is Row.Header -> header(frame.context, row)
-            is Row.TaskItem -> taskCard(frame.context, row.task, row.showProject).apply { setOnClickListener { onTask(row.task) } }
+            is Row.TaskItem -> taskCard(frame.context, row.task, row.showProject, row.showAssignee, onMove).apply { setOnClickListener { onTask(row.task) } }
             is Row.ProjectItem -> projectCard(frame.context, row.project).apply { setOnClickListener { onProject(row.project) } }
             is Row.AlertItem -> alertRow(frame.context, row.alert).apply { setOnClickListener { onAlert(row.alert) } }
             is Row.Note -> frame.context.text(row.text, 14f, R.color.muted).apply { setPadding(frame.context.dp(16), frame.context.dp(12), frame.context.dp(16), frame.context.dp(12)) }
@@ -67,8 +69,11 @@ private fun cardLp(c: Context) = LinearLayout.LayoutParams(ViewGroup.LayoutParam
     setMargins(c.dp(12), c.dp(4), c.dp(12), c.dp(4))
 }
 
-/** A task: title + priority, tags, then reference / project / status / due / counts / assignee. */
-fun taskCard(c: Context, task: Task, showProject: Boolean) = LinearLayout(c).apply {
+/**
+ * A task: title + priority; reference · project · status · due · counts on one line; tags; and its
+ * main move as a small button (Start, Submit for review, Approve) so it can be done from the list.
+ */
+fun taskCard(c: Context, task: Task, showProject: Boolean, showAssignee: Boolean = true, onMove: ((Task, Move) -> Unit)? = null) = LinearLayout(c).apply {
     orientation = LinearLayout.VERTICAL
     setBackgroundResource(R.drawable.card)
     foreground = c.getDrawable(R.drawable.ripple_row)
@@ -78,11 +83,12 @@ fun taskCard(c: Context, task: Task, showProject: Boolean) = LinearLayout(c).app
     addView(LinearLayout(c).apply {
         orientation = LinearLayout.HORIZONTAL
         addView(c.text(task.title, 16f, if (task.isDone) R.color.muted else R.color.text, bold = true).apply {
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
             if (task.isDone) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
         }, lp(0, weight = 1f))
         addView(priorityMark(c, task.priority))
     })
-    if (task.tags.isNotEmpty()) addView(flow(c, task.tags.map { c.colorPill(it.name, it.color, small = true) }), lp().apply { topMargin = c.dp(6) })
 
     addView(flow(c, buildList {
         add(c.text(task.reference, 12f, R.color.muted).apply { fontFeatureSettings = "tnum" })
@@ -96,7 +102,83 @@ fun taskCard(c: Context, task: Task, showProject: Boolean) = LinearLayout(c).app
         if (task.checklistTotal > 0) add(iconText(c, R.drawable.ic_checklist, "${task.checklistDone}/${task.checklistTotal}", R.color.muted))
         if (task.commentsCount > 0) add(iconText(c, R.drawable.ic_comment, task.commentsCount.toString(), R.color.muted))
         if (task.attachmentsCount > 0) add(iconText(c, R.drawable.ic_attach, task.attachmentsCount.toString(), R.color.muted))
-    }, trailing = task.assignee?.let { c.avatar(it.name, 24) }), lp().apply { topMargin = c.dp(8) })
+    }, trailing = if (showAssignee) task.assignee?.let { c.avatar(it.name, 24) } else null), lp().apply { topMargin = c.dp(6) })
+
+    val move = if (onMove != null) task.primaryMove else null
+    if (task.tags.isNotEmpty() || move != null) addView(LinearLayout(c).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        addView(flow(c, task.tags.map { c.colorPill(it.name, it.color, small = true) }), lp(0, weight = 1f))
+        if (move != null && onMove != null) addView(c.text(move.label, 13f, R.color.surface, bold = true).apply {
+            setBackgroundResource(R.drawable.move_pill)
+            gravity = Gravity.CENTER
+            minHeight = c.dp(34)
+            setPadding(c.dp(14), 0, c.dp(14), 0)
+            contentDescription = "${move.label}: ${task.reference}"
+            setOnClickListener { onMove(task, move) }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = c.dp(8) })
+    }, lp().apply { topMargin = c.dp(8) })
+}
+
+/** Due-date groups for "My tasks": Overdue, Today, Next 7 days, Later, No due date, Completed. */
+fun groupByDue(tasks: List<Task>, showProject: Boolean = true, showAssignee: Boolean = false): List<Row> {
+    fun group(t: Task) = when {
+        t.isDone -> 5
+        t.dueDate == null -> 4
+        else -> Format.daysFromToday(t.dueDate).let { d -> if (d < 0) 0 else if (d == 0L) 1 else if (d <= 7) 2 else 3 }
+    }
+    val names = listOf("Overdue", "Today", "Next 7 days", "Later", "No due date", "Completed")
+    val colors = listOf("red", "amber", "blue", "gray", "gray", "green")
+    return tasks.groupBy { group(it) }.toSortedMap().flatMap { (key, items) ->
+        listOf(Row.Header(names[key], items.size, colors[key])) + items.map { Row.TaskItem(it, showProject, showAssignee) }
+    }
+}
+
+/**
+ * Swipe a task card right to make its main move (same as its button). The card springs back;
+ * the list reloads when the move is done.
+ */
+fun RecyclerView.swipeToMove(adapter: RowAdapter, onSwipe: (Task, Move) -> Unit) {
+    val c = context
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = c.getColor(R.color.surface)
+        textSize = c.dp(15).toFloat()
+        isFakeBoldText = true
+    }
+    fun taskAt(position: Int) = (adapter.rows.getOrNull(position) as? Row.TaskItem)?.task
+
+    androidx.recyclerview.widget.ItemTouchHelper(object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(0, androidx.recyclerview.widget.ItemTouchHelper.RIGHT) {
+        override fun getSwipeDirs(rv: RecyclerView, holder: RecyclerView.ViewHolder): Int =
+            if (taskAt(holder.bindingAdapterPosition)?.primaryMove != null) super.getSwipeDirs(rv, holder) else 0
+
+        override fun onMove(rv: RecyclerView, a: RecyclerView.ViewHolder, b: RecyclerView.ViewHolder) = false
+
+        override fun getSwipeThreshold(holder: RecyclerView.ViewHolder) = 0.35f
+
+        override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) {
+            val position = holder.bindingAdapterPosition
+            adapter.notifyItemChanged(position)
+            val task = taskAt(position) ?: return
+            task.primaryMove?.let { onSwipe(task, it) }
+        }
+
+        override fun onChildDraw(canvas: android.graphics.Canvas, rv: RecyclerView, holder: RecyclerView.ViewHolder, dX: Float, dY: Float, state: Int, active: Boolean) {
+            val card = (holder.itemView as? ViewGroup)?.getChildAt(0) ?: holder.itemView
+            val move = taskAt(holder.bindingAdapterPosition)?.primaryMove
+            if (dX > 0 && move != null) {
+                val top = holder.itemView.top + card.top.toFloat()
+                val bottom = holder.itemView.top + card.bottom.toFloat()
+                val left = card.left.toFloat()
+                paint.color = c.getColor(R.color.primary)
+                canvas.drawRoundRect(left, top, left + dX + c.dp(16), bottom, c.dp(12).toFloat(), c.dp(12).toFloat(), paint)
+                canvas.save()
+                canvas.clipRect(left, top, left + dX, bottom)
+                canvas.drawText(move.label, left + c.dp(18), (top + bottom) / 2 + textPaint.textSize / 3, textPaint)
+                canvas.restore()
+            }
+            super.onChildDraw(canvas, rv, holder, dX, dY, state, active)
+        }
+    }).attachToRecyclerView(this)
 }
 
 fun projectCard(c: Context, project: Project) = LinearLayout(c).apply {

@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A list page (tab or screen): optional filter chips, pull-to-refresh list, and the state view. -->
+<!-- A list page (tab or screen): optional search and filter chips, an offline banner, the
+     pull-to-refresh list, the state view and an optional "+" button. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg"
     android:orientation="vertical">
+
+    <EditText
+        android:id="@+id/search"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/field"
+        android:drawableStart="@drawable/ic_search"
+        android:drawablePadding="10dp"
+        android:drawableTint="@color/muted"
+        android:hint="Search"
+        android:imeOptions="actionSearch"
+        android:inputType="text"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:textSize="16sp"
+        android:visibility="gone" />
 
     <HorizontalScrollView
         android:id="@+id/filtersScroll"
@@ -25,6 +45,23 @@
             android:paddingBottom="10dp" />
     </HorizontalScrollView>
 
+    <TextView
+        android:id="@+id/offline"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/warning_soft"
+        android:drawableStart="@drawable/ic_wifi_off"
+        android:drawablePadding="8dp"
+        android:drawableTint="@color/warning"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/warning"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -39,8 +76,20 @@
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
                 android:paddingTop="8dp"
-                android:paddingBottom="16dp" />
+                android:paddingBottom="88dp" />
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
         <include layout="@layout/view_state" />
+        <ImageButton
+            android:id="@+id/fab"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:background="@drawable/fab"
+            android:contentDescription="New task"
+            android:elevation="6dp"
+            android:src="@drawable/ic_add"
+            android:tint="@color/surface"
+            android:visibility="gone" />
     </FrameLayout>
 </LinearLayout>

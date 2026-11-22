@@ -25,7 +25,7 @@ class TaskWorkflowController extends Controller
 
         $task = $this->workflow->move($task, $transition, $request->user(), $validated['comment'] ?? null);
 
-        return (new TaskResource($task->load(['project.transitions', 'project.members:id', 'status', 'assignee:id,name,email', 'reviewer:id,name,email', 'creator:id,name,email', 'checklist', 'attachments.user:id,name,email', 'watchers:id,name,email', 'tags', 'routineRun:id,name'])->loadCount(TaskController::listCounts())))->detailed();
+        return (new TaskResource($task->load(['project.transitions.toStatus:id,type', 'project.members:id', 'status', 'assignee:id,name,email', 'reviewer:id,name,email', 'creator:id,name,email', 'checklist', 'attachments.user:id,name,email', 'watchers:id,name,email', 'tags', 'routineRun:id,name'])->loadCount(TaskController::listCounts())))->detailed();
     }
 
     /** Order within the task's column: PUT /tasks/{task}/position {position} */

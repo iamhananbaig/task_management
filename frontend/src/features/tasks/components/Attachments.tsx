@@ -4,26 +4,32 @@ import { DownloadSimpleIcon, PaperclipIcon, TrashIcon, UploadSimpleIcon } from "
 
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { api } from "@/lib/api"
+import { ATTACHMENT_ACCEPT, useUploadAttachment } from "@/features/tasks/lib/use-upload"
+import { api, apiErrorMessage } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { saveDownload } from "@/lib/download"
 import { toast } from "@/lib/toast"
-import { apiErrorMessage } from "@/lib/api"
-import { useAuth } from "@/lib/auth"
 import type { Attachment, Task } from "@/lib/types"
-import { fileSize, timeAgo } from "@/lib/utils"
+import { cn, fileSize, timeAgo } from "@/lib/utils"
 
-const ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.heic,.zip"
-
+/** The task's files with download / remove, and a drop zone to add more. */
 export function Attachments({ task }: { task: Task }) {
+  const files = task.attachments ?? []
+
+  return (
+    <div className="flex flex-col gap-2">
+      {files.length > 0 && <FileList task={task} files={files} />}
+      {task.can?.comment ? (
+        <FileDrop taskId={task.id} />
+      ) : (
+        files.length === 0 && <p className="text-sm text-muted-foreground">No files attached.</p>
+      )}
+    </div>
+  )
+}
+
+export function FileList({ task, files }: { task: Task; files: Attachment[] }) {
   const { user } = useAuth()
-  const input = React.useRef<HTMLInputElement>(null)
-  const upload = useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData()
-      form.append("file", file)
-      return api.post(`/tasks/${task.id}/attachments`, form)
-    },
-  })
   const remove = useMutation({ mutationFn: async (id: number) => api.delete(`/attachments/${id}`) })
 
   const download = async (attachment: Attachment) => {
@@ -35,53 +41,93 @@ export function Attachments({ task }: { task: Task }) {
     }
   }
 
-  const files = task.attachments ?? []
+  return (
+    <ul className="flex flex-col divide-y rounded-md border">
+      {files.map((file) => (
+        <li key={file.id} className="flex items-center gap-3 px-3 py-2">
+          <PaperclipIcon className="size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <button type="button" className="block max-w-full truncate text-left text-sm font-medium hover:underline" onClick={() => download(file)}>
+              {file.original_name}
+            </button>
+            <div className="text-xs text-muted-foreground">
+              {fileSize(file.size)} · {file.user?.name ?? "—"} · {timeAgo(file.created_at)}
+            </div>
+          </div>
+          <Button variant="ghost" size="icon-sm" aria-label={`Download ${file.original_name}`} onClick={() => download(file)}>
+            <DownloadSimpleIcon />
+          </Button>
+          {(task.can?.delete || (file.user?.id === user?.id && task.can?.comment)) && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Remove ${file.original_name}`}
+              disabled={remove.isPending && remove.variables === file.id}
+              onClick={() => remove.mutate(file.id)}
+            >
+              <TrashIcon />
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Click or drop one or more files; each is uploaded in turn. */
+export function FileDrop({ taskId, compact }: { taskId: number; compact?: boolean }) {
+  const input = React.useRef<HTMLInputElement>(null)
+  const upload = useUploadAttachment(taskId)
+  const [busy, setBusy] = React.useState(0)
+  const [over, setOver] = React.useState(false)
+
+  const send = async (list: FileList | null) => {
+    const files = Array.from(list ?? [])
+    if (files.length === 0) return
+    setBusy(files.length)
+    for (const file of files) {
+      try {
+        await upload.mutateAsync(file)
+      } catch {
+        // the shared error toast has already shown the server's message
+      }
+      setBusy((left) => left - 1)
+    }
+  }
 
   return (
-    <div className="flex flex-col gap-3">
-      {files.length === 0 && <p className="text-sm text-muted-foreground">No files attached.</p>}
-      <ul className="flex flex-col divide-y rounded-md border empty:hidden">
-        {files.map((file) => (
-          <li key={file.id} className="flex items-center gap-3 px-3 py-2">
-            <PaperclipIcon className="size-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <button type="button" className="block max-w-full truncate text-left text-sm font-medium hover:underline" onClick={() => download(file)}>
-                {file.original_name}
-              </button>
-              <div className="text-xs text-muted-foreground">
-                {fileSize(file.size)} · {file.user?.name ?? "—"} · {timeAgo(file.created_at)}
-              </div>
-            </div>
-            <Button variant="ghost" size="icon-sm" aria-label={`Download ${file.original_name}`} onClick={() => download(file)}>
-              <DownloadSimpleIcon />
-            </Button>
-            {(task.can?.delete || (file.user?.id === user?.id && task.can?.comment)) && (
-              <Button variant="ghost" size="icon-sm" aria-label={`Remove ${file.original_name}`} onClick={() => remove.mutate(file.id)}>
-                <TrashIcon />
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {task.can?.comment && (
-        <div>
-          <input
-            ref={input}
-            type="file"
-            accept={ACCEPT}
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) upload.mutate(file)
-              event.target.value = ""
-            }}
-          />
-          <Button variant="outline" onClick={() => input.current?.click()} disabled={upload.isPending}>
-            {upload.isPending ? <Spinner /> : <UploadSimpleIcon />} Attach a file
-          </Button>
-          <p className="mt-1 text-xs text-muted-foreground">PDF, Office, images, text or zip, up to 20 MB.</p>
-        </div>
+    <div
+      onDragOver={(event) => {
+        event.preventDefault()
+        setOver(true)
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(event) => {
+        event.preventDefault()
+        setOver(false)
+        void send(event.dataTransfer.files)
+      }}
+      className={cn(
+        "flex items-center gap-3 rounded-md border border-dashed px-3 text-sm text-muted-foreground transition-colors",
+        compact ? "py-2" : "py-3",
+        over && "border-primary bg-primary/5 text-foreground",
       )}
+    >
+      <input
+        ref={input}
+        type="file"
+        multiple
+        accept={ATTACHMENT_ACCEPT}
+        className="hidden"
+        onChange={(event) => {
+          void send(event.target.files)
+          event.target.value = ""
+        }}
+      />
+      <Button type="button" variant="outline" size="sm" onClick={() => input.current?.click()} disabled={busy > 0}>
+        {busy > 0 ? <Spinner /> : <UploadSimpleIcon />} {busy > 0 ? `Uploading ${busy}…` : "Attach files"}
+      </Button>
+      <span className="min-w-0 truncate">or drop them here · PDF, Office, images, zip · up to 20 MB each</span>
     </div>
   )
 }

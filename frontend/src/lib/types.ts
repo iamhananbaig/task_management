@@ -56,6 +56,8 @@ export interface AvailableTransition {
   id: number
   label: string
   to_status_id: number
+  /** Kind of status the move leads to (review / done prompt for evidence and open checklist items) */
+  to_type?: StatusType | null
   requires_comment: boolean
   requires_attachment: boolean
 }

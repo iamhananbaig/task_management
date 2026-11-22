@@ -1,7 +1,5 @@
 package com.iamhananbaig.tasks
 
-import android.content.Intent
-
 /** A project's tasks grouped by status (the board as a list). Everyone / Mine / Unassigned; + new task. */
 class ProjectActivity : ListScreen() {
     companion object { const val ID = "project_id" }
@@ -31,10 +29,7 @@ class ProjectActivity : ListScreen() {
         project = p
         topBar(p.name)
         topSummary("${p.key} · ${p.done} of ${p.open + p.done} done" + if (p.overdue > 0) " · ${p.overdue} overdue" else "")
-        clearTopActions()
-        if (p.canCreateTasks) addTopAction(R.drawable.ic_add, "New task") {
-            startActivity(Intent(this, NewTaskActivity::class.java).putExtra(NewTaskActivity.PROJECT_ID, p.id))
-        }
+        if (p.canCreateTasks) showFab("New task in ${p.name}") { newTask(p.id) }
         val tasks = api.get("/projects/$projectId/tasks", mapOf("assignee" to assignee)).optJSONArray("data").objects().map { Task.from(it) }
         return p.statuses.flatMap { status ->
             val inStatus = tasks.filter { it.status?.id == status.id }

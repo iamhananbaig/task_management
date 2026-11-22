@@ -123,6 +123,18 @@ it('lists only the moves the user may make', function () {
     expect($labels->all())->toBe(['Send back', 'Approve']);
 });
 
+it('tells the apps which kind of status each move leads to', function () {
+    $this->signIn($this->assignee);
+    $moves = collect($this->getJson("/api/v1/tasks/{$this->task->id}")->json('data.available_transitions'));
+    expect($moves->pluck('to_type', 'label')->all())->toBe(['Submit for review' => 'review']);
+
+    ($this->move)('Submit for review');
+    $this->signIn($this->reviewer);
+    $moves = collect($this->getJson("/api/v1/projects/{$this->task->project_id}/tasks")->json('data'))
+        ->firstWhere('id', $this->task->id)['available_transitions'];
+    expect(collect($moves)->pluck('to_type', 'label')->all())->toBe(['Send back' => 'active', 'Approve' => 'done']);
+});
+
 it('lets "override workflow" holders make any defined move', function () {
     $this->signIn($this->userWithRole('manager'));
 

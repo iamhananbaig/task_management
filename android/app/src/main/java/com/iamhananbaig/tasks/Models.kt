@@ -22,7 +22,10 @@ data class Status(val id: Int, val name: String, val color: String, val type: St
     }
 }
 
-data class Move(val id: Int, val label: String, val toStatusId: Int, val requiresComment: Boolean, val requiresAttachment: Boolean)
+data class Move(val id: Int, val label: String, val toStatusId: Int, val requiresComment: Boolean, val requiresAttachment: Boolean, val toType: String? = null) {
+    /** Send back, pull back, reopen…: shown as a secondary action. */
+    val isBackward get() = Regex("back|reopen|reject|return", RegexOption.IGNORE_CASE).containsMatchIn(label)
+}
 
 data class Tag(val id: Int, val name: String, val color: String, val groupId: Int, val active: Boolean = true)
 
@@ -63,6 +66,22 @@ data class Task(
 ) {
     val isDone get() = status?.isDone == true
 
+    /** Checklist items not yet ticked (detail has the items, list rows only the counts). */
+    val openChecklist get() = if (checklist.isNotEmpty()) checklist.count { !it.done } else maxOf(0, checklistTotal - checklistDone)
+    val fileCount get() = if (attachments.isNotEmpty()) attachments.size else attachmentsCount
+
+    /** The main forward move (Start, Submit for review, Approve), for one-tap buttons and swipes. */
+    val primaryMove get() = moves.firstOrNull { !it.isBackward }
+
+    /**
+     * Whether a move should open the move sheet instead of happening at once: a required reason or
+     * document, every hand-over for review, and finishing with open checklist items. Same rule as the web.
+     */
+    fun needsMoveSheet(move: Move): Boolean = move.requiresComment ||
+        (move.requiresAttachment && fileCount == 0) ||
+        move.toType == "review" ||
+        (move.toType == "done" && openChecklist > 0)
+
     companion object {
         fun from(j: JSONObject): Task {
             val project = j.optJSONObject("project") ?: JSONObject()
@@ -89,7 +108,7 @@ data class Task(
                 commentsCount = j.optInt("comments_count"),
                 attachmentsCount = j.optInt("attachments_count"),
                 moves = j.optJSONArray("available_transitions").objects().map {
-                    Move(it.optInt("id"), it.optString("label"), it.optInt("to_status_id"), it.optBoolean("requires_comment"), it.optBoolean("requires_attachment"))
+                    Move(it.optInt("id"), it.optString("label"), it.optInt("to_status_id"), it.optBoolean("requires_comment"), it.optBoolean("requires_attachment"), it.optString("to_type").takeIf { t -> t.isNotEmpty() && t != "null" })
                 },
                 checklist = j.optJSONArray("checklist").objects().map { ChecklistItem(it.optInt("id"), it.optString("title"), it.optBoolean("is_done")) },
                 attachments = j.optJSONArray("attachments").objects().map {
