@@ -7,11 +7,7 @@ dist-ssr/
 # PHP
 vendor/
 
-# Expo / React Native
-mobile/.expo/
-mobile/ios/
-mobile/android/
-mobile/web-build/
+# Android (android/.gitignore has the rest)
 *.jks
 *.p8
 *.p12

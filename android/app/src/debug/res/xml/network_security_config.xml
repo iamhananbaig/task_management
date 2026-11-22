@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: plain HTTP allowed, to test against `php artisan serve` on the LAN,
+     the emulator's host (10.0.2.2) or `adb reverse`. Release builds are HTTPS-only. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

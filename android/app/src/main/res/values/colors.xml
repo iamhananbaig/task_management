@@ -1,0 +1,33 @@
+<resources>
+    <!-- Matches the web app: blue-700 primary, emerald accent, cool greys. -->
+    <color name="bg">#F2F3F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text">#1A1C2B</color>
+    <color name="muted">#5F6378</color>
+    <color name="border">#E3E5EC</color>
+    <color name="pressed">#EBEDF3</color>
+    <color name="primary">#1447E6</color>
+    <color name="primary_dark">#193CB8</color>
+    <color name="primary_soft">#E8EFFE</color>
+    <color name="success">#007A55</color>
+    <color name="success_soft">#E3F5EE</color>
+    <color name="danger">#C2261D</color>
+    <color name="danger_dark">#9B1C15</color>
+    <color name="danger_soft">#FBE9E7</color>
+    <color name="warning">#B45309</color>
+    <color name="warning_soft">#FDF1E2</color>
+    <color name="disabled">#D5D8E1</color>
+        <color name="ink">#1A1C2B</color>
+    <color name="ink_muted">#A9ADBF</color>
+    <color name="scrim">#801A1C2B</color>
+    <!-- Status / tag / project colours (web app swatches): soft background + readable text + dot. -->
+    <color name="sw_gray_bg">#EEF0F4</color><color name="sw_gray_fg">#4B5063</color><color name="sw_gray_dot">#A1A1AA</color>
+    <color name="sw_blue_bg">#E3ECFE</color><color name="sw_blue_fg">#1D4ED8</color><color name="sw_blue_dot">#3B82F6</color>
+    <color name="sw_sky_bg">#E0F2FE</color><color name="sw_sky_fg">#0369A1</color><color name="sw_sky_dot">#0EA5E9</color>
+    <color name="sw_green_bg">#D9F5E8</color><color name="sw_green_fg">#047857</color><color name="sw_green_dot">#10B981</color>
+    <color name="sw_amber_bg">#FDF1D3</color><color name="sw_amber_fg">#92400E</color><color name="sw_amber_dot">#F59E0B</color>
+    <color name="sw_orange_bg">#FFEAD5</color><color name="sw_orange_fg">#C2410C</color><color name="sw_orange_dot">#F97316</color>
+    <color name="sw_red_bg">#FCE4E2</color><color name="sw_red_fg">#B91C1C</color><color name="sw_red_dot">#EF4444</color>
+    <color name="sw_purple_bg">#EDE9FE</color><color name="sw_purple_fg">#6D28D9</color><color name="sw_purple_dot">#8B5CF6</color>
+    <color name="sw_pink_bg">#FCE7F3</color><color name="sw_pink_fg">#BE185D</color><color name="sw_pink_dot">#EC4899</color>
+</resources>

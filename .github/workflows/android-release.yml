@@ -1,0 +1,104 @@
+# Builds, signs and publishes the Tasks Android app when an android-vX.Y[.Z] tag is pushed:
+#
+#   git tag -a android-v1.2 -m "What changed, one line per item"
+#   git push origin android-v1.2
+#
+# The tag message becomes the release notes the app shows in its "Update available" dialog.
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64   base64 of ~/.android-keys/tasks.jks
+#   ANDROID_KEYSTORE_PASSWORD the store/key password from ~/.android-keys/tasks.properties
+name: Android release
+
+on:
+  push:
+    tags: ['android-v*']
+
+permissions:
+  contents: write # create the release
+
+concurrency:
+  group: android-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the annotated tag's message is the release notes
+
+      - name: Version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#android-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]{1,2}\.[0-9]{1,2}(\.[0-9]{1,2})?$ ]]; then
+            echo "::error::Tag must look like android-v1.2 or android-v1.2.3 (got $GITHUB_REF_NAME)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Set the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD secrets first"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tasks.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=tasks\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/tasks.jks" "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > "$RUNNER_TEMP/signing.properties"
+          echo "TASKS_SIGNING=$RUNNER_TEMP/signing.properties" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: ./gradlew assembleRelease -PappVersionName="$VERSION" --no-daemon
+
+      - name: Check signature
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -f "$APK" || { echo "::error::No signed APK was produced"; exit 1; }
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK" | tee "$RUNNER_TEMP/cert.txt"
+          # Once the key exists, pin its SHA-256 fingerprint here (as mess_soft does) so a build signed
+          # with any other key fails instead of producing an APK that cannot update installed apps.
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          APK="dist/tasks-$VERSION.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          # checkout replaces the annotated tag with a lightweight one; fetch the real tag object.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+            MESSAGE=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^-----BEGIN PGP SIGNATURE-----/,$d')
+          else
+            MESSAGE="Version $VERSION"   # lightweight tag: no message to use
+          fi
+          {
+            echo "$MESSAGE"
+            echo
+            echo "---"
+            echo "Install: open this page on the phone and download the APK, or use"
+            echo "Me → Check for updates in the app."
+            echo
+            echo "SHA-256: \`$SHA\`"
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" "$APK" \
+            --title "Tasks $VERSION (Android)" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag

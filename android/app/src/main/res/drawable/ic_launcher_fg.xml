@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Checked box on the adaptive icon's 108dp canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M36,32h36a4,4 0,0 1,4 4v36a4,4 0,0 1,-4 4h-36a4,4 0,0 1,-4 -4v-36a4,4 0,0 1,4 -4z" />
+    <path android:fillColor="#1447E6"
+        android:pathData="M48.5,62.5l-7,-7l3.2,-3.2l3.8,3.8l14.8,-14.8l3.2,3.2z" />
+</vector>
