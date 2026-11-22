@@ -7,6 +7,7 @@ use App\Support\Audit;
 use App\Support\Permissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -17,11 +18,18 @@ class RoleController extends Controller
 {
     public function index(): JsonResponse
     {
+        // Counted from the assignments table: Spatie's users() relation needs a guard, and a guard-less
+        // count query resolves the default (sanctum) guard, which has no user model → 500.
+        $userCounts = DB::table(config('permission.table_names.model_has_roles'))
+            ->selectRaw('role_id, count(*) as aggregate')
+            ->groupBy('role_id')
+            ->pluck('aggregate', 'role_id');
+
         return response()->json([
-            'data' => Role::with('permissions:id,name')->withCount('users')->orderBy('id')->get()->map(fn (Role $role) => [
+            'data' => Role::with('permissions:id,name')->orderBy('id')->get()->map(fn (Role $role) => [
                 'id' => $role->id,
                 'name' => $role->name,
-                'users_count' => $role->users_count,
+                'users_count' => (int) ($userCounts[$role->id] ?? 0),
                 'permissions' => $role->permissions->pluck('name')->values(),
                 'locked' => $role->name === 'admin',
             ]),

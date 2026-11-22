@@ -104,3 +104,16 @@ it('makes an existing user admin and refuses short passwords', function () {
     expect($member->fresh()->hasRole('admin'))->toBeTrue()
         ->and($member->fresh()->hasRole('member'))->toBeFalse();
 });
+
+it('lists roles with how many users have each', function () {
+    $this->signIn($this->userWithRole('admin'));
+    $this->userWithRole('member');
+    $this->userWithRole('member');
+
+    $roles = collect($this->getJson('/api/v1/roles')->assertOk()->json('data'))->keyBy('name');
+
+    expect($roles['admin']['users_count'])->toBe(1)
+        ->and($roles['member']['users_count'])->toBe(2)
+        ->and($roles['admin']['locked'])->toBeTrue()
+        ->and($roles['member']['permissions'])->toContain('comment on tasks');
+});
