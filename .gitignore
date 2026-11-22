@@ -1,0 +1,42 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# PHP
+vendor/
+
+# Expo / React Native
+mobile/.expo/
+mobile/ios/
+mobile/android/
+mobile/web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# Backups / dumps
+backups/
+*.sql
+*.sql.gz
+*.bak
+
+# Docker stack secrets (template: .env.docker.example)
+/.env
+.env.docker.local
